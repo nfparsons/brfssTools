@@ -13,7 +13,7 @@ You can install the development version of `brfssTools` from GitHub using:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("nfparsons/brfssTools")
+pak::pak("nfparsons/brfssTools")
 ```
 
 ## The "Bring Your Own Data" (BYOD) Workflow
