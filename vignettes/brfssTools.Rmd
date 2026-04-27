@@ -1,0 +1,426 @@
+---
+title: "Getting started with brfssTools"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with brfssTools}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>"
+)
+```
+
+## What this package solves
+
+The Behavioral Risk Factor Surveillance System (BRFSS) is the largest continuously-conducted health survey system in the world, but working with its longitudinal microdata is a slog. Variable names change between years, response codes shift (a `1` meaning "Yes" in 2015 might mean "No" in 2016 for the same concept), question wording drifts, and modules come and go. The transition from summary race columns to REAL-D arrays between 2021 and 2024 fractured demographic data into dozens of disparate columns. And if your work spans the public CDC national file *and* one or more state-restricted files, the bookkeeping multiplies.
+
+`brfssTools` is a unified harmonization engine. It lets you treat BRFSS like `tidycensus` treats the ACS: register or download a pool of raw survey files, search a master crosswalk for the concepts you care about, and pull harmonized tibbles ready for analysis — across years, across datasets.
+
+The package does **not** bundle BRFSS microdata. State files are restricted, and the national file is too large to ship with an R package. Instead, `brfssTools` operates on a **bring-your-own-data** (BYOD) model for state files, and provides a download helper for the public CDC national file.
+
+## The three pieces
+
+The package has three loosely-coupled pieces:
+
+1. **The pool** — a directory of raw `.csv` (Oregon convention) or `.xpt` (CDC convention) files registered with `brfss_set_pool()`. One pool per dataset (`"National"`, `"OR"`, etc.).
+2. **The master crosswalk** — a bundled set of CSVs (`concepts`, `concept_map`, `inventory`, `values`) loaded with `brfss_crosswalk()`. This is the Rosetta Stone that translates raw variables into stable concept IDs and applies recode rules.
+3. **The pull engine** — `brfss_pull()` ties the two together: given concept IDs and a dataset, it fetches the right yearly files, applies recodes, and returns a tibble.
+
+Most of what follows is showing how those three pieces compose.
+
+## A fully self-contained example
+
+So you can see the data shape and run code as you read, this vignette uses a small synthetic dataset rather than real BRFSS files. We'll create two years of OR-like CSVs in `tempdir()`, register them as a pool, build a tiny crosswalk in memory, and pull harmonized data.
+
+```{r build-fake-pool}
+library(brfssTools)
+library(dplyr)
+library(tibble)
+
+# ---- a tiny synthetic OR pool ----
+or_dir <- file.path(tempdir(), "vignette_or_pool")
+dir.create(or_dir, showWarnings = FALSE)
+
+writeLines(c(
+  "SEQNO,ASTHNOW,GENHLTH,MENTHLTH",
+  "2022000001,1,2,3",
+  "2022000002,2,1,0",
+  "2022000003,9,3,30",
+  "2022000004,1,5,15"
+), file.path(or_dir, "BRFSS_2022.csv"))
+
+writeLines(c(
+  "SEQNO,ASTHNOW,GENHLTH,MENTHLTH",
+  "2023000001,2,1,0",
+  "2023000002,1,4,8",
+  "2023000003,1,2,2"
+), file.path(or_dir, "BRFSS_2023.csv"))
+
+brfss_clear_pool()                       # tidy any prior session state
+brfss_set_pool("OR", or_dir)
+brfss_pool_status()
+```
+
+Now a tiny crosswalk that knows about three concepts. In real use you'd call `brfss_crosswalk()` to load the bundled one — we're constructing it explicitly here so you can see the data structure.
+
+```{r build-fake-cw}
+cw <- list(
+  inventory = tribble(
+    ~source, ~year, ~raw_var_name, ~position, ~var_kind,  ~question_text,    ~module, ~missing_values_raw, ~source_file,    ~parse_notes,
+    "core",  2022L, "ASTHNOW",     2L,        "categorical","Currently has asthma",NA, "9",                 "BRFSS_2022.csv", NA,
+    "core",  2022L, "GENHLTH",     3L,        "categorical","General health",     NA, NA_character_,       "BRFSS_2022.csv", NA,
+    "core",  2022L, "MENTHLTH",    4L,        "numeric",    "Mental health days", NA, NA_character_,       "BRFSS_2022.csv", NA,
+    "core",  2023L, "ASTHNOW",     2L,        "categorical","Currently has asthma",NA, "9",                 "BRFSS_2023.csv", NA,
+    "core",  2023L, "GENHLTH",     3L,        "categorical","General health",     NA, NA_character_,       "BRFSS_2023.csv", NA,
+    "core",  2023L, "MENTHLTH",    4L,        "numeric",    "Mental health days", NA, NA_character_,       "BRFSS_2023.csv", NA
+  ),
+  values = tribble(
+    ~source, ~year, ~raw_var_name, ~code, ~label,    ~is_missing,
+    "core",  2022L, "ASTHNOW",     "9",   "Refused", TRUE,
+    "core",  2023L, "ASTHNOW",     "9",   "Refused", TRUE
+  ),
+  concepts = tribble(
+    ~concept_id, ~concept_label,         ~domain,   ~subdomain, ~construct_notes, ~canonical_response_type,
+    "ASTHNOW",   "Currently has asthma", "health",  NA,         NA,               "yes_no",
+    "GENHLTH",   "Self-rated health",    "health",  NA,         NA,               "ordinal",
+    "MENTHLTH",  "Poor mental health days (last 30)", "mental_health", NA, NA,    "count"
+  ),
+  concept_values = tibble::tibble(
+    concept_id = character(), code = character(), label = character()
+  ),
+  concept_map = tribble(
+    ~concept_id, ~source, ~year, ~raw_var_name, ~question_text_drift, ~recode_type, ~recode_rule, ~notes,
+    "ASTHNOW",   "core",  2022L, "ASTHNOW",     "identical",          "inline",     "1=1; 2=0",   NA,
+    "ASTHNOW",   "core",  2023L, "ASTHNOW",     "identical",          "inline",     "1=1; 2=0",   NA,
+    "GENHLTH",   "core",  2022L, "GENHLTH",     "identical",          "identity",   NA,           NA,
+    "GENHLTH",   "core",  2023L, "GENHLTH",     "identical",          "identity",   NA,           NA,
+    "MENTHLTH",  "core",  2022L, "MENTHLTH",    "identical",          "identity",   NA,           NA,
+    "MENTHLTH",  "core",  2023L, "MENTHLTH",    "identical",          "identity",   NA,           NA
+  ),
+  lake = "brfss"
+)
+```
+
+With the pool registered and the crosswalk in hand, a pull is one call:
+
+```{r pull-wide}
+brfss_pull(
+  cw,
+  concept_ids = c("ASTHNOW", "GENHLTH", "MENTHLTH"),
+  dataset     = "OR",
+  id_cols     = "SEQNO",
+  output      = "wide"
+)
+```
+
+A few things happened in that call worth noticing:
+
+- The 2022 `ASTHNOW = 9` row came back as `NA` because we tagged code `9` as `is_missing = TRUE` in the values table.
+- The 2022 `ASTHNOW = 1` rows came back as `"1"` and `ASTHNOW = 2` as `"0"`, because the inline recode rule mapped `1 -> 1` and `2 -> 0` (Yes/No standardization).
+- `GENHLTH` and `MENTHLTH` came through unchanged because their recode type was `"identity"`.
+
+You can also pull in long format, which is more convenient for some downstream uses:
+
+```{r pull-long}
+brfss_pull(
+  cw,
+  concept_ids = c("ASTHNOW", "GENHLTH"),
+  dataset     = "OR",
+  id_cols     = "SEQNO",
+  output      = "long"
+) |>
+  head(10)
+```
+
+## Real-world setup
+
+The runnable example above shows the mechanics. In practice you don't construct the crosswalk yourself — you load the bundled one — and your pool points at real files. There are two pathways.
+
+### National CDC data
+
+The public combined landline + cell phone LLCP file is downloadable. `brfss_download()` fetches the requested years from CDC, extracts them into your user cache, and registers the cache as the `"National"` pool in one step. You need the `haven` package installed (it ships as a Suggest) because the files are SAS XPT.
+
+```{r national-download, eval = FALSE}
+# One-time setup, per machine, per year
+brfss_download(2020:2024)
+#> Downloading BRFSS 2020 from CDC...
+#>   -> ~/.cache/R/brfssTools/LLCP2020.XPT
+#> Downloading BRFSS 2021 from CDC...
+#>   -> ~/.cache/R/brfssTools/LLCP2021.XPT
+#> ...
+#> Indexed 5 file(s) for dataset 'National'.
+
+# Now usable like any other dataset
+cw <- brfss_crosswalk(dataset = "National", years = 2020:2024)
+
+national_data <- brfss_pull(
+  cw,
+  concept_ids = c("survey_weight", "psu", "strata", "GENHLTH", "MENTHLTH"),
+  dataset     = "National",
+  states      = c("OR", "WA", "ID", "CA"),   # USPS or FIPS, your choice
+  id_cols     = "SEQNO",
+  output      = "wide"
+)
+```
+
+Years before 2011 are not supported — the 2011 weighting methodology change makes earlier files non-comparable. The cache lives at `brfss_cache_dir()`, which is the OS-appropriate path returned by `tools::R_user_dir()`.
+
+### State-restricted data (BYOD)
+
+For Oregon and other state-restricted files, point the package at your secure data directory. Files can be `.csv` or `.xpt`; year is auto-detected from the filename or the `SEQNO` column.
+
+```{r state-byod, eval = FALSE}
+brfss_set_pool("OR", "Z:/Secure_Data/BRFSS/Raw_Files")
+
+cw <- brfss_crosswalk(dataset = "OR", years = 2018:2024)
+
+oregon_data <- brfss_pull(
+  cw,
+  concept_ids = c("survey_weight", "psu", "strata",
+                  "multnomah_flag", "fmd", "GENHLTH"),
+  dataset     = "OR",
+  id_cols     = "SEQNO",
+  output      = "wide"
+)
+```
+
+You can have multiple pools registered at once — `brfss_pool_status()` will show them all.
+
+## Inspecting a crosswalk: search and lookup
+
+Before showing the bundled real-world crosswalk, let's exercise the inspection helpers against the synthetic `cw` we built above — same API, just less data. `brfss_search()` does case-insensitive regex matching against concept labels, raw variable names, and question text:
+
+```{r search-demo}
+brfss_search(cw, "asthma")
+brfss_search(cw, "^MENT", scope = "raw_var")
+```
+
+`brfss_lookup()` returns the full crosswalk record(s) for one or more concept IDs, joined with concept and inventory metadata — handy when you need to know which raw variable backs a concept in each year and what recode rule applies:
+
+```{r lookup-demo}
+brfss_lookup(cw, "ASTHNOW") |>
+  select(concept_id, source, year, raw_var_name, recode_type, recode_rule)
+```
+
+## Inspecting the bundled master crosswalk
+
+In real use, you load the bundled crosswalk rather than hand-building one. The same helpers operate on it:
+
+```{r search-and-lookup, eval = FALSE}
+cw <- brfss_crosswalk()
+
+# Search by free text against concept labels, raw variable names, or
+# question text. Case-insensitive, regex-aware.
+brfss_search(cw, "asthma")
+brfss_search(cw, "^MENT", scope = "raw_var")
+brfss_search(cw, "depression|anxiety", scope = "concept")
+
+# Pull the full crosswalk record(s) for a concept
+brfss_lookup(cw, "GENHLTH")
+```
+
+## The `source` column: how datasets coexist
+
+Every row in the concept_map carries a `source` tag controlling where the rule applies:
+
+| `source` value      | Meaning                                                        |
+|---------------------|----------------------------------------------------------------|
+| `"core"`            | Applies to every dataset (national LLCP and any state)         |
+| `"OR"`              | Oregon state-added items only                                  |
+| `"WA"`, `"CA"`, ... | State-added items for that state (when added to the registry) |
+
+When you call `brfss_pull(..., dataset = "X")`, the engine filters the concept_map to rows where `source %in% c("core", "X")`. So:
+
+- A National pull sees `core` (plus any rules tagged `"National"`, e.g., CDC-only calculated variables).
+- An Oregon pull sees `core` rules *plus* OR-specific items like state-added modules or local geography flags.
+
+This is what makes the architecture extensible. Adding support for a new state means tagging that state's added rules with the state code and registering the dataset in `brfss_datasets()` — no changes to any pull/search/lookup code.
+
+```{r datasets-listing}
+brfss_datasets()
+```
+
+## Pulling concepts: common patterns
+
+The example above already showed wide vs long output and missing-code handling. A few more patterns worth knowing.
+
+### Year filtering
+
+If your concept_map covers many years but you only want a subset, pass `years`:
+
+```{r year-filter}
+brfss_pull(
+  cw,
+  concept_ids = "GENHLTH",
+  dataset     = "OR",
+  years       = 2023,           # only this year
+  id_cols     = "SEQNO"
+)
+```
+
+This filters at the concept_map level *before* fetching files, so it's an efficiency win when you have a many-year pool but a single-year analysis.
+
+### State filtering (national pulls)
+
+Most useful with the national file, where the `_STATE` column carries FIPS codes. You can pass either USPS abbreviations or FIPS integers:
+
+```{r states-syntax, eval = FALSE}
+# Equivalent
+brfss_pull(cw, "GENHLTH", dataset = "National", states = c("OR", "WA"))
+brfss_pull(cw, "GENHLTH", dataset = "National", states = c(41, 53))
+```
+
+State filtering is silently ignored if the file has no `_STATE` column.
+
+### Keeping raw values alongside harmonized
+
+Useful for auditing recode rules:
+
+```{r keep-raw}
+brfss_pull(
+  cw,
+  concept_ids = "ASTHNOW",
+  dataset     = "OR",
+  id_cols     = "SEQNO",
+  keep_raw    = TRUE,
+  output      = "long"
+) |>
+  head()
+```
+
+You can see the raw `1`/`2`/`9` values next to their harmonized `1`/`0`/`NA`.
+
+## Race and ethnicity: untangling the REAL-D shift
+
+Between 2021 and 2024, BRFSS shifted from a small set of race summary columns to highly granular REAL-D arrays (e.g., `RE1` through `RE10` carrying detailed origin codes). `brfss_race()` operates on a wide tibble produced by `brfss_pull()` and derives a single standardized race/ethnicity variable, scanning across both legacy and modern columns.
+
+```{r race-derivation, eval = FALSE}
+demos <- brfss_pull(
+  cw,
+  concept_ids = c("race_array_1", "race_array_2", "race_array_3",
+                  "hisp_flag"),
+  dataset = "OR",
+  id_cols = "SEQNO",
+  output  = "wide"
+)
+
+# Three standards, choose based on reporting need:
+demos |> brfss_race(standard = "cdc")     # 8-level CDC mutually-exclusive
+demos |> brfss_race(standard = "fewest")  # White NH vs BIPOC vs Hispanic
+demos |> brfss_race(standard = "reald")   # Full REAL-D binary indicators
+```
+
+The three standards each produce different output columns. `cdc` adds a single `race_eth_cdc` column; `fewest` adds `race_eth_fewest`; `reald` adds a battery of `reald_*` binary indicators (Slavic, Afro-Caribbean, Hmong, Marshallese, Middle Eastern, etc.). For pre-2022 rows, the `reald_*` indicators are coerced to `NA` since those granular codes weren't collected.
+
+## Onboarding a new dataset
+
+This is one of the highest-leverage pieces. Suppose someone hands you Washington State BRFSS files. You want to add `"WA"` as a first-class dataset.
+
+### Step 1: register the dataset
+
+Edit `R/datasets.R` and add a row to the registry:
+
+```{r registry-edit, eval = FALSE}
+# In R/datasets.R, .brfss_dataset_registry()
+"WA", "Washington State BRFSS (restricted; BYOD)", "csv", FALSE, FALSE
+```
+
+After reinstalling, `brfss_set_pool("WA", path)` will not warn about an unknown dataset and `brfss_pull(dataset = "WA")` will work.
+
+### Step 2: register the pool and scan it
+
+```{r inventory-walkthrough, eval = FALSE}
+brfss_set_pool("WA", "/secure/wa_brfss")
+
+# Generate a starting inventory: all variables, by year, with positions
+# and inferred types. Same shape as raw_inventory_brfss.csv.
+wa_inv <- brfss_inventory_pool("WA")
+
+# Scan observed values + frequencies for select variables. Same shape
+# as raw_values_brfss.csv. (Slow on large national files; restrict to
+# vars of interest with `vars =`.)
+wa_vals <- brfss_values_pool("WA",
+                             vars = c("ASTHNOW", "_AGEG5YR", "WA_ADDED_1"))
+```
+
+### Step 3: diff against the existing crosswalk
+
+Find variables in the WA pool that aren't yet in the master crosswalk:
+
+```{r diff-crosswalk, eval = FALSE}
+cw <- brfss_crosswalk()
+
+new_to_wa <- dplyr::anti_join(
+  wa_inv,
+  cw$inventory,
+  by = c("year", "raw_var_name")
+)
+```
+
+Anything in `new_to_wa` is a candidate for a `source = "WA"` rule (state-added). Anything *already* in `cw$inventory` is presumably shared LLCP and needs no work — those rules already apply to WA via the `core` tag.
+
+### Step 4: write the crosswalk additions
+
+For each WA-added variable, add rows to `concept_map_brfss.csv` (and any new concepts to `concepts_brfss.csv`, value labels to `concept_values_brfss.csv`, etc.) with `source = "WA"`. Reinstall, and `brfss_pull(dataset = "WA")` will start applying them.
+
+The point of this whole architecture: adding a state is a data-curation task, not a code-modification task.
+
+## Pool management
+
+Multi-pool sessions get a real status view:
+
+```{r pool-management}
+brfss_pool_status()
+```
+
+Adding more pools (here, a synthetic National pool):
+
+```{r add-second-pool}
+nat_dir <- file.path(tempdir(), "vignette_nat_pool")
+dir.create(nat_dir, showWarnings = FALSE)
+writeLines(c("SEQNO,_STATE,GENHLTH",
+             "2022000001,41,2",
+             "2022000002,53,3",
+             "2022000003,6,1"),
+           file.path(nat_dir, "LLCP2022.csv"))
+
+brfss_set_pool("National", nat_dir)
+brfss_pool_status()
+```
+
+Clearing one or all pools:
+
+```{r clear-pool}
+brfss_clear_pool("National")
+brfss_pool_status()
+
+brfss_clear_pool()           # nuke them all
+brfss_pool_status()
+```
+
+## Where to go from here
+
+The harmonized output of `brfss_pull()` is a regular tibble — it composes naturally with whatever you'd already use for survey analysis. A common pattern with BRFSS is `srvyr` for design-aware estimation:
+
+```{r srvyr-handoff, eval = FALSE}
+library(srvyr)
+
+oregon_data |>
+  filter(!is.na(GENHLTH)) |>
+  as_survey_design(
+    weights = survey_weight,
+    ids     = psu,
+    strata  = strata,
+    nest    = TRUE
+  ) |>
+  group_by(GENHLTH) |>
+  summarize(prop = survey_mean(vartype = "ci"))
+```
+
+For multi-year trend analyses you'll typically want to bind several years together — `brfss_pull()` does this for you when you pass a multi-year range, but you can also pull per-year and stack manually if you need year-specific weights or design adjustments.
+
+The bundled crosswalk is a living artifact. As BRFSS evolves and as you tag more state-added rules, the map grows. Contributing back to it (or shipping your shop's local fork) is how the package gets more useful over time.

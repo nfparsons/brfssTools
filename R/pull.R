@@ -194,13 +194,12 @@ brfss_pull <- function(cw,
   fips <- .resolve_states(states)
 
   # Decide which `source` values are applicable for this dataset.
-  # core   -> applies to every dataset
-  # <ds>   -> applies only when pulling that dataset (e.g., OR-added items)
-  applicable_sources <- if (identical(dataset, "National")) {
-    "core"
-  } else {
-    c("core", dataset)
-  }
+  # core    -> applies to every dataset
+  # <ds>    -> applies only when pulling that dataset
+  # The rule is uniform: include "core" plus the dataset's own source tag.
+  # (National-only calculated variables, if any, can be tagged
+  # `source = "National"` in the concept_map.)
+  applicable_sources <- unique(c("core", dataset))
 
   cm <- cw$concept_map |>
     dplyr::filter(

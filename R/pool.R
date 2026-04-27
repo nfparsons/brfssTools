@@ -1,6 +1,11 @@
 # R/pool.R
 #
-# Dataset-aware pool management and file dispatch.
+# Dataset-aware pool management, format-agnostic file dispatch,
+# and helpers to inspect what's currently registered.
+
+# ----------------------------------------------------------------------------
+# Pool registration
+# ----------------------------------------------------------------------------
 
 #' Register a directory of raw BRFSS files for a given dataset
 #'
@@ -14,9 +19,12 @@
 #' similar — and falls back to peeking at the leading characters of the
 #' `SEQNO` column.
 #'
+#' Unknown dataset names produce a warning (but still work). To formalize
+#' a new dataset, add it to `.brfss_dataset_registry()` in `R/datasets.R`.
+#'
 #' @param dataset A single character. The dataset identifier
-#'   (e.g., `"National"`, `"OR"`). Conventionally a state's USPS abbreviation
-#'   for state-restricted data, or `"National"` for the public CDC LLCP file.
+#'   (e.g., `"National"`, `"OR"`). See [brfss_datasets()] for the list of
+#'   known datasets.
 #' @param path Character path to the directory containing the dataset's
 #'   yearly survey files.
 #' @return Invisibly, the index (named list of year -> file path).
@@ -25,6 +33,7 @@
 #' \dontrun{
 #' brfss_set_pool("OR", "Z:/Secure_Data/Oregon_BRFSS")
 #' brfss_set_pool("National", "~/brfss_national")
+#' brfss_pool_status()
 #' }
 brfss_set_pool <- function(dataset, path) {
   if (!is.character(dataset) || length(dataset) != 1L || !nzchar(dataset)) {
@@ -33,6 +42,8 @@ brfss_set_pool <- function(dataset, path) {
   if (!dir.exists(path)) {
     stop(sprintf("Directory does not exist: %s", path), call. = FALSE)
   }
+
+  .validate_dataset(dataset)
 
   message(sprintf("Scanning pool for dataset '%s'...", dataset))
 
@@ -68,6 +79,76 @@ brfss_set_pool <- function(dataset, path) {
   invisible(index)
 }
 
+#' Show currently registered data pools
+#'
+#' Returns a one-row-per-(dataset, year) tibble showing which raw data
+#' files are registered and where they live on disk. Empty if no pools
+#' have been registered yet.
+#'
+#' @return A tibble with columns `dataset`, `year`, and `file`.
+#' @export
+#' @examples
+#' \dontrun{
+#' brfss_set_pool("OR", "/path/to/oregon")
+#' brfss_pool_status()
+#' }
+brfss_pool_status <- function() {
+  pools <- .brfss_get("pools", list())
+  if (length(pools) == 0L) {
+    return(tibble::tibble(
+      dataset = character(),
+      year    = integer(),
+      file    = character()
+    ))
+  }
+
+  rows <- purrr::imap(pools, function(idx, ds) {
+    if (length(idx) == 0L) {
+      return(tibble::tibble(
+        dataset = ds, year = NA_integer_, file = NA_character_
+      ))
+    }
+    tibble::tibble(
+      dataset = ds,
+      year    = as.integer(names(idx)),
+      file    = unname(unlist(idx))
+    )
+  })
+
+  out <- dplyr::bind_rows(rows)
+  dplyr::arrange(out, .data$dataset, .data$year)
+}
+
+#' Clear one or all registered data pools
+#'
+#' Removes a dataset's pool registration from the package's session
+#' environment. Useful for testing and for switching between alternate
+#' data folders without restarting R.
+#'
+#' @param dataset A single dataset name to clear, or `NULL` (default) to
+#'   clear every registered pool.
+#' @return Invisibly, a character vector of cleared dataset names.
+#' @export
+brfss_clear_pool <- function(dataset = NULL) {
+  pools <- .brfss_get("pools", list())
+  if (is.null(dataset)) {
+    cleared <- names(pools)
+    .brfss_set("pools", list())
+  } else {
+    if (!is.character(dataset) || length(dataset) != 1L) {
+      stop("`dataset` must be NULL or a single string.", call. = FALSE)
+    }
+    cleared <- intersect(dataset, names(pools))
+    pools[cleared] <- NULL
+    .brfss_set("pools", pools)
+  }
+  invisible(cleared)
+}
+
+# ----------------------------------------------------------------------------
+# Year detection
+# ----------------------------------------------------------------------------
+
 #' Auto-detect the BRFSS survey year from a raw data file
 #'
 #' Tries two strategies in order:
@@ -89,22 +170,8 @@ brfss_detect_year <- function(file_path) {
   }
 
   # Strategy 2: peek at SEQNO
-  ext <- tolower(tools::file_ext(file_path))
-  peek <- switch(
-    ext,
-    "csv" = suppressWarnings(
-      readr::read_csv(file_path, n_max = 5L,
-                      show_col_types = FALSE, progress = FALSE)
-    ),
-    "xpt" = {
-      rlang::check_installed("haven", reason = "to read SAS XPT files.")
-      suppressWarnings(haven::read_xpt(file_path, n_max = 5L))
-    },
-    {
-      warning(sprintf("Unsupported file extension: %s", ext), call. = FALSE)
-      return(NULL)
-    }
-  )
+  peek <- .peek_pool_file(file_path, n_max = 5L)
+  if (is.null(peek)) return(NULL)
 
   seq_col <- grep("^seqno$", names(peek), ignore.case = TRUE, value = TRUE)
   if (length(seq_col) == 0L) {
@@ -118,8 +185,47 @@ brfss_detect_year <- function(file_path) {
   yr
 }
 
+# ----------------------------------------------------------------------------
+# File dispatch helpers (internal)
+# ----------------------------------------------------------------------------
+
+# Internal: read a pool file in full (any year). Dispatches on extension.
+.read_pool_file <- function(path) {
+  ext <- tolower(tools::file_ext(path))
+  switch(
+    ext,
+    "csv" = readr::read_csv(path, show_col_types = FALSE, progress = FALSE),
+    "xpt" = {
+      rlang::check_installed("haven", reason = "to read SAS XPT files.")
+      haven::read_xpt(path)
+    },
+    stop(sprintf("Unsupported file extension '%s' for: %s", ext, path),
+         call. = FALSE)
+  )
+}
+
+# Internal: read just the first n_max rows of a pool file (for type
+# inference and SEQNO peeking).
+.peek_pool_file <- function(path, n_max = 5L) {
+  ext <- tolower(tools::file_ext(path))
+  switch(
+    ext,
+    "csv" = suppressWarnings(
+      readr::read_csv(path, n_max = n_max,
+                      show_col_types = FALSE, progress = FALSE)
+    ),
+    "xpt" = {
+      rlang::check_installed("haven", reason = "to read SAS XPT files.")
+      suppressWarnings(haven::read_xpt(path, n_max = n_max))
+    },
+    {
+      warning(sprintf("Unsupported file extension: %s", ext), call. = FALSE)
+      NULL
+    }
+  )
+}
+
 # Internal: read a yearly file from a registered pool, returning a tibble.
-# Dispatches on file extension.
 .fetch_from_pool <- function(dataset, year) {
   index <- .brfss_get_pool(dataset)
 
@@ -140,15 +246,5 @@ brfss_detect_year <- function(file_path) {
     return(NULL)
   }
 
-  ext <- tolower(tools::file_ext(path))
-  switch(
-    ext,
-    "csv" = readr::read_csv(path, show_col_types = FALSE, progress = FALSE),
-    "xpt" = {
-      rlang::check_installed("haven", reason = "to read SAS XPT files.")
-      haven::read_xpt(path)
-    },
-    stop(sprintf("Unsupported file extension '%s' for: %s", ext, path),
-         call. = FALSE)
-  )
+  .read_pool_file(path)
 }

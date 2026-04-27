@@ -8,8 +8,8 @@ brfss_set_pool(dataset, path)
 }
 \arguments{
 \item{dataset}{A single character. The dataset identifier
-(e.g., \code{"National"}, \code{"OR"}). Conventionally a state's USPS abbreviation
-for state-restricted data, or \code{"National"} for the public CDC LLCP file.}
+(e.g., \code{"National"}, \code{"OR"}). See \code{\link[=brfss_datasets]{brfss_datasets()}} for the list of
+known datasets.}
 
 \item{path}{Character path to the directory containing the dataset's
 yearly survey files.}
@@ -26,10 +26,14 @@ dispatches on extension automatically.
 Year is detected first from the filename — files matching \verb{LLCP\{YYYY\}} or
 similar — and falls back to peeking at the leading characters of the
 \code{SEQNO} column.
+
+Unknown dataset names produce a warning (but still work). To formalize
+a new dataset, add it to \code{.brfss_dataset_registry()} in \code{R/datasets.R}.
 }
 \examples{
 \dontrun{
 brfss_set_pool("OR", "Z:/Secure_Data/Oregon_BRFSS")
 brfss_set_pool("National", "~/brfss_national")
+brfss_pool_status()
 }
 }

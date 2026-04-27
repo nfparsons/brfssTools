@@ -164,14 +164,11 @@ brfss_crosswalk <- function(path = NULL, dataset = NULL, years = NULL) {
   } else .empty_concept_map()
   concept_map <- .coerce_source(concept_map)
 
-  # Apply dataset filter to concept_map. National is core-only; everything
-  # else gets core PLUS its own state-added rules.
+  # Apply dataset filter to concept_map. Each dataset gets "core" plus its
+  # own state-added rules. (If a dataset has no state-added rules, the
+  # extra source tag in `keep` simply matches nothing.)
   if (!is.null(dataset)) {
-    keep <- if (length(dataset) == 1L && identical(dataset, "National")) {
-      "core"
-    } else {
-      unique(c("core", dataset))
-    }
+    keep <- unique(c("core", dataset))
     concept_map <- dplyr::filter(concept_map, .data$source %in% .env$keep)
   }
 

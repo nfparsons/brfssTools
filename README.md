@@ -6,6 +6,8 @@ Working with longitudinal BRFSS (Behavioral Risk Factor Surveillance System) dat
 
 `brfssTools` is a unified harmonization engine that solves this. It provides a `tidycensus`-style workflow: register or download a pool of raw survey files, search a bundled master crosswalk, and pull harmonized concepts as a tidy tibble — across years, across datasets.
 
+> See `vignette("brfssTools")` for a comprehensive walkthrough including a self-contained runnable example, the source-tag architecture, and the workflow for adding a new state dataset.
+
 ## Installation
 
 ```r
