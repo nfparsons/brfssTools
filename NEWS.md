@@ -1,3 +1,17 @@
+# brfssTools 0.0.0.9005
+
+## New features
+
+* `brfss_state_tag_audit()`: diffs a crosswalk's `core`-tagged rules
+  against a registered reference pool's actual variable inventory
+  (typically `"National"`), to surface rows that are candidates for
+  retagging to a state-specific source (`"OR"`, etc.). Useful once when
+  onboarding a National pool to clean up legacy state-as-core curation
+  noise. Returns a tibble with `in_reference`, `reference_years_seen`,
+  `suggested_source`, and `needs_action` columns. Strict per-year
+  matching by default; relaxed (any-year) matching available via
+  `strict_year_match = FALSE`.
+
 # brfssTools 0.0.0.9004
 
 ## Breaking changes

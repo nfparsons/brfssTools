@@ -51,24 +51,56 @@ When you register a National pool, the pull engine will look for these
 raw column names in LLCP files and not find them. The fix is mechanical
 but bulk: retag rows where `raw_var_name` doesn't appear in any LLCP file.
 
-- [ ] **Build the state-tag audit helper**: a function that diffs your
-  concept_map's `raw_var_name` values against the official CDC LLCP
-  variable list (downloadable from CDC) and returns rows tagged `core`
-  whose raw_var_name doesn't appear in any LLCP year. These are
-  candidates for `source = "OR"` retagging.
+- [x] **Build the state-tag audit helper** ✅ Done — `brfss_state_tag_audit()`
+  in `R/state_tag_audit.R` with tests in `tests/testthat/test-state-tag-audit.R`.
+  Diffs `core`-tagged concept_map rows against a registered National
+  pool's actual variable inventory. Returns a tibble with columns
+  `concept_id, year, raw_var_name, source, in_reference,
+  reference_years_seen, suggested_source, needs_action`.
 
-- [ ] **Run the helper** and review the output. Common categories likely
-  to surface:
+- [ ] **Register a National pool** before running the audit:
+  ```r
+  brfss_download(2012:2024)   # one-time per machine
+  ```
+
+- [ ] **Run the audit** and review the output:
+  ```r
+  cw <- brfss_crosswalk()      # no dataset filter -> all rules
+  audit <- brfss_state_tag_audit(cw,
+                                 reference_dataset = "National",
+                                 suggested_source  = "OR")
+
+  # Summary view: which raw variables fail per-year matching?
+  audit |>
+    dplyr::filter(needs_action) |>
+    dplyr::count(raw_var_name, reference_years_seen, sort = TRUE)
+  ```
+  Expected categories likely to surface as `needs_action = TRUE`:
   - [ ] `RACE1`-`RACE10` (2013-2016) — pre-REAL-D OR race arrays
-  - [ ] `wtrk_*` (all variants except `wtrk_all`) — OR-specific weight
-        variants
+  - [ ] `wtrk_*` (all variants) — OR-specific weight variants
   - [ ] `xraceth`, `XRACETH_EXP`, `xrace_exp2`, `RACETHX_EXP2`, `ORACE3` —
         OR-derived race recodes
   - [ ] `agegrp_or` and any other `*_or` suffix variables
-  - [ ] OR-specific Hispanic concepts (the `racesum1`/`racesum2` family)
   - [ ] OR-derived age groupings (`age10`, `age50g3`, `age40g3`, etc.)
+  - [ ] OR-specific Hispanic concepts (`racesum1`/`racesum2` family)
 
-- [ ] **Apply the retags** as a single migration script (Migration 05).
+- [ ] **Apply the retags** as Migration 05. Rough template:
+  ```r
+  to_retag <- audit |> dplyr::filter(needs_action)
+  cm <- read_csv("inst/extdata/concept_map_brfss.csv")
+  cm <- cm |>
+    dplyr::left_join(
+      to_retag |> dplyr::select(concept_id, year, raw_var_name,
+                                suggested_source),
+      by = c("concept_id", "year", "raw_var_name")
+    ) |>
+    dplyr::mutate(source = dplyr::coalesce(suggested_source, source)) |>
+    dplyr::select(-suggested_source)
+  write_csv(cm, "inst/extdata/concept_map_brfss.csv", na = "")
+  ```
+  Spot-check before committing — some rows you may want to keep as `core`
+  even if absent from National (e.g., if a variable is upcoming in CDC
+  but not yet in your downloaded years).
 
 ---
 
