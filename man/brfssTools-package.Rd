@@ -7,16 +7,14 @@
 \title{brfssTools: Harmonize Longitudinal BRFSS Survey Data}
 \description{
 Tools for harmonizing the Behavioral Risk Factor Surveillance System
-(BRFSS) survey data across years, where variable names, response codes,
+(BRFSS) survey data across years and across datasets (national CDC LLCP
+files plus state-restricted files), where variable names, response codes,
 and question text drift between waves. Provides a \code{tidycensus}-style
-workflow for searching a packaged crosswalk, pulling concepts from a
-user-supplied pool of raw survey files, and deriving standardized
-race/ethnicity classifications from REAL-D arrays. Functions take data
-as their first argument and return tibbles, so they compose naturally
-with both base R (\verb{|>}) and magrittr (\verb{\%>\%}) pipes.
+workflow: download or register a pool of raw survey files, search a
+bundled master crosswalk, and pull harmonized concepts as a tidy tibble.
 }
 \author{
-\strong{Maintainer}: Nathan Parsons \email{nathan.parsons@gmail.com}
+\strong{Maintainer}: First Last \email{first.last@example.com}
 
 }
 \keyword{internal}

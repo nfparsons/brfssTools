@@ -2,7 +2,7 @@
 % Please edit documentation in R/crosswalk.R
 \name{brfss_harmonize_vec}
 \alias{brfss_harmonize_vec}
-\title{Apply a recode rule to a raw-value vector.}
+\title{Apply a recode rule to a raw-value vector}
 \usage{
 brfss_harmonize_vec(
   x,
@@ -14,7 +14,7 @@ brfss_harmonize_vec(
 \arguments{
 \item{x}{Raw value vector.}
 
-\item{recode_type}{"identity", "inline", or "function".}
+\item{recode_type}{One of \code{"identity"}, \code{"inline"}, or \code{"function"}.}
 
 \item{recode_rule}{The string rule or function name.}
 
@@ -24,5 +24,5 @@ brfss_harmonize_vec(
 A character vector of harmonized values.
 }
 \description{
-Apply a recode rule to a raw-value vector.
+Apply a recode rule to a raw-value vector
 }

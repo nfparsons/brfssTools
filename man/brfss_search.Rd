@@ -2,7 +2,7 @@
 % Please edit documentation in R/crosswalk.R
 \name{brfss_search}
 \alias{brfss_search}
-\title{Text-search the crosswalk.}
+\title{Text-search the crosswalk}
 \usage{
 brfss_search(cw, query, scope = c("all", "concept", "question", "raw_var"))
 }
@@ -11,11 +11,13 @@ brfss_search(cw, query, scope = c("all", "concept", "question", "raw_var"))
 
 \item{query}{Search pattern (regex). Case-insensitive.}
 
-\item{scope}{Where to search: "all" (default), "concept", "question", or "raw_var".}
+\item{scope}{Where to search: \code{"all"} (default), \code{"concept"}, \code{"question"},
+or \code{"raw_var"}.}
 }
 \value{
-A tibble of matching variables with the field where the match occurred.
+A tibble of matching variables with the field where the match
+occurred.
 }
 \description{
-Text-search the crosswalk.
+Text-search the crosswalk
 }

@@ -1,70 +1,6 @@
 # R/crosswalk.R
 #
-# Crosswalk helper library for the brfssTools package.
-
-# ============================================================================
-# Global Configuration (BYOD Workflow)
-# ============================================================================
-
-#' Set the directory for raw BRFSS survey data
-#'
-#' @description
-#' Tells `brfssTools` where your local pool of raw survey data is stored.
-#' This directory should contain the yearly survey files saved as `.csv`
-#' objects (e.g., "BRFSS_2020.csv").
-#'
-#' @param path Character string pointing to the local data pool.
-#' @export
-#' @examples
-#' \dontrun{
-#' brfss_set_pool("Z:/Secure_Data/Oregon_Surveys/Harmonized_Pool")
-#' }
-brfss_set_pool <- function(path) {
-  if (!dir.exists(path)) {
-    stop("The specified directory does not exist.", call. = FALSE)
-  }
-
-  message("Scanning and indexing survey pool...")
-
-  # Find all CSVs in the folder
-  csv_files <- list.files(path, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
-
-  if (length(csv_files) == 0) {
-    warning("No .csv files found in the specified directory.")
-  }
-
-  # Build an index mapping the year to the specific file path
-  pool_index <- list()
-  for (f in csv_files) {
-    yr <- brfss_detect_year(f)
-    if (!is.null(yr)) {
-      pool_index[[as.character(yr)]] <- f
-    }
-  }
-
-  # Save the index to global options
-  options(brfss_survey_index = pool_index)
-  message(sprintf("Successfully indexed %d BRFSS files.", length(pool_index)))
-}
-
-# Internal helper to fetch data from the pool on the fly
-.fetch_from_pool <- function(survey, year) {
-  pool_index <- getOption("brfss_survey_index")
-
-  if (is.null(pool_index)) {
-    stop("Data pool not set. Please run `brfss_set_pool('path/to/dir')` first.", call. = FALSE)
-  }
-
-  # Look up the exact file path for this year from our auto-detected index
-  exact_file <- pool_index[[as.character(year)]]
-
-  if (is.null(exact_file) || !file.exists(exact_file)) {
-    warning(sprintf("Could not find data for year %s in the survey pool.", year), call. = FALSE)
-    return(NULL)
-  }
-
-  readr::read_csv(exact_file, show_col_types = FALSE)
-}
+# Master crosswalk loader, search, lookup, and per-vector harmonization.
 
 # ============================================================================
 # Private helpers
@@ -94,8 +30,9 @@ brfss_set_pool <- function(path) {
   mapping <- character(0)
   for (p in pairs) {
     kv <- stringr::str_split(p, "\\s*=\\s*", n = 2)[[1]]
-    if (length(kv) != 2) {
-      stop(sprintf("Malformed inline recode pair '%s' in rule '%s'", p, rule))
+    if (length(kv) != 2L) {
+      stop(sprintf("Malformed inline recode pair '%s' in rule '%s'", p, rule),
+           call. = FALSE)
     }
     k <- stringr::str_trim(kv[1])
     v <- stringr::str_trim(kv[2])
@@ -109,7 +46,7 @@ brfss_set_pool <- function(path) {
     stop(sprintf(
       "Recode function '%s' not found. Ensure it is exported in brfssTools.",
       fn_name
-    ))
+    ), call. = FALSE)
   }
   get(fn_name, mode = "function")
 }
@@ -131,7 +68,7 @@ brfss_set_pool <- function(path) {
 
 .empty_concept_map <- function() tibble::tibble(
   concept_id          = character(),
-  survey              = character(),
+  source              = character(),
   year                = integer(),
   raw_var_name        = character(),
   question_text_drift = character(),
@@ -140,49 +77,71 @@ brfss_set_pool <- function(path) {
   notes               = character()
 )
 
+# Backwards-compat shim: older CSVs used `survey` instead of `source`.
+# Silently rename and convert "BRFSS" -> "core" so legacy crosswalks load.
+.coerce_source <- function(df) {
+  if (!is.data.frame(df) || nrow(df) == 0L) return(df)
+  if ("source" %in% names(df)) return(df)
+  if ("survey" %in% names(df)) {
+    df <- dplyr::rename(df, source = "survey")
+    df$source <- ifelse(df$source == "BRFSS", "core", df$source)
+  }
+  df
+}
+
 # ============================================================================
 # brfss_crosswalk()
 # ============================================================================
 
-#' Load the BRFSS crosswalk into memory.
+#' Load the master BRFSS crosswalk
 #'
-#' @param path Directory containing the CSVs. Defaults to NULL, which automatically
-#'   finds the bundled crosswalk inside the installed brfssTools package.
-#' @param years Optional integer vector of years to load (e.g., c(2018, 2019)).
-#' @return A list of tibbles representing the crosswalk schema.
+#' @description
+#' Reads the bundled crosswalk CSVs and returns them as a list of tibbles.
+#' One master crosswalk covers every dataset; rules carry a `source` tag
+#' indicating where they apply: `"core"` for rules that hold across all
+#' BRFSS datasets, or a state code (e.g. `"OR"`) for state-added items.
+#'
+#' @param path Optional directory containing the crosswalk CSVs. Defaults
+#'   to the bundled crosswalk inside the installed package.
+#' @param dataset Optional character vector of datasets to filter the
+#'   `concept_map` to. For example, `dataset = "OR"` keeps rules tagged
+#'   `"core"` plus `"OR"`. `NULL` (default) returns the full master
+#'   crosswalk unfiltered.
+#' @param years Optional integer vector of years to load.
+#' @return A list of tibbles: `inventory`, `values`, `concepts`,
+#'   `concept_values`, and `concept_map`.
 #' @export
-brfss_crosswalk <- function(path = NULL, years = NULL) {
+#' @examples
+#' \dontrun{
+#' cw_full <- brfss_crosswalk()
+#' cw_or   <- brfss_crosswalk(dataset = "OR", years = 2018:2023)
+#' cw_us   <- brfss_crosswalk(dataset = "National")
+#' }
+brfss_crosswalk <- function(path = NULL, dataset = NULL, years = NULL) {
   lake <- "brfss"
 
-  # Automatically find the package's internal CSVs
   if (is.null(path)) {
     path <- system.file("extdata", package = "brfssTools")
-    if (path == "") stop("Could not find the extdata directory in brfssTools.")
+    if (!nzchar(path)) {
+      stop("Could not find extdata directory in brfssTools.", call. = FALSE)
+    }
   }
 
   inv_path <- file.path(path, sprintf("raw_inventory_%s.csv", lake))
   val_path <- file.path(path, sprintf("raw_values_%s.csv", lake))
-  if (!file.exists(inv_path)) stop("Missing: ", inv_path)
-  if (!file.exists(val_path)) stop("Missing: ", val_path)
+  if (!file.exists(inv_path)) stop("Missing: ", inv_path, call. = FALSE)
+  if (!file.exists(val_path)) stop("Missing: ", val_path, call. = FALSE)
 
   inv <- readr::read_csv(
-    inv_path,
-    col_types = readr::cols(
-      survey = "c", year = "i", raw_var_name = "c",
-      question_text = "c", position = "i", var_kind = "c",
-      module = "c", missing_values_raw = "c",
-      source_file = "c", parse_notes = "c"
-    ),
-    show_col_types = FALSE
+    inv_path, show_col_types = FALSE,
+    col_types = readr::cols(.default = "c", year = "i", position = "i")
   )
   val <- readr::read_csv(
-    val_path,
-    col_types = readr::cols(
-      survey = "c", year = "i", raw_var_name = "c",
-      code = "c", label = "c", is_missing = "l"
-    ),
-    show_col_types = FALSE
+    val_path, show_col_types = FALSE,
+    col_types = readr::cols(.default = "c", year = "i", is_missing = "l")
   )
+  inv <- .coerce_source(inv)
+  val <- .coerce_source(val)
 
   concepts_path <- file.path(path, sprintf("concepts_%s.csv", lake))
   concepts <- if (file.exists(concepts_path)) {
@@ -199,15 +158,22 @@ brfss_crosswalk <- function(path = NULL, years = NULL) {
   cm_path <- file.path(path, sprintf("concept_map_%s.csv", lake))
   concept_map <- if (file.exists(cm_path)) {
     readr::read_csv(
-      cm_path,
-      col_types = readr::cols(
-        concept_id = "c", survey = "c", year = "i",
-        raw_var_name = "c", question_text_drift = "c",
-        recode_type = "c", recode_rule = "c", notes = "c"
-      ),
-      show_col_types = FALSE
+      cm_path, show_col_types = FALSE,
+      col_types = readr::cols(.default = "c", year = "i")
     )
   } else .empty_concept_map()
+  concept_map <- .coerce_source(concept_map)
+
+  # Apply dataset filter to concept_map. National is core-only; everything
+  # else gets core PLUS its own state-added rules.
+  if (!is.null(dataset)) {
+    keep <- if (length(dataset) == 1L && identical(dataset, "National")) {
+      "core"
+    } else {
+      unique(c("core", dataset))
+    }
+    concept_map <- dplyr::filter(concept_map, .data$source %in% .env$keep)
+  }
 
   if (!is.null(years)) {
     inv <- dplyr::filter(inv, .data$year %in% .env$years)
@@ -229,12 +195,14 @@ brfss_crosswalk <- function(path = NULL, years = NULL) {
 # brfss_search()
 # ============================================================================
 
-#' Text-search the crosswalk.
+#' Text-search the crosswalk
 #'
 #' @param cw A loaded crosswalk object.
 #' @param query Search pattern (regex). Case-insensitive.
-#' @param scope Where to search: "all" (default), "concept", "question", or "raw_var".
-#' @return A tibble of matching variables with the field where the match occurred.
+#' @param scope Where to search: `"all"` (default), `"concept"`, `"question"`,
+#'   or `"raw_var"`.
+#' @return A tibble of matching variables with the field where the match
+#'   occurred.
 #' @export
 brfss_search <- function(cw, query, scope = c("all", "concept", "question", "raw_var")) {
   scope <- match.arg(scope)
@@ -243,8 +211,8 @@ brfss_search <- function(cw, query, scope = c("all", "concept", "question", "raw
   joined <- cw$inventory |>
     dplyr::left_join(
       cw$concept_map |>
-        dplyr::select(concept_id, survey, year, raw_var_name),
-      by = c("survey", "year", "raw_var_name")
+        dplyr::select(concept_id, source, year, raw_var_name),
+      by = c("source", "year", "raw_var_name")
     ) |>
     dplyr::left_join(
       cw$concepts |>
@@ -280,8 +248,8 @@ brfss_search <- function(cw, query, scope = c("all", "concept", "question", "raw
       is_match   = .env$is_match
     ) |>
     dplyr::filter(.data$is_match) |>
-    dplyr::arrange(.data$survey, .data$year, .data$raw_var_name) |>
-    dplyr::select(survey, year, raw_var_name, question_text,
+    dplyr::arrange(.data$source, .data$year, .data$raw_var_name) |>
+    dplyr::select(source, year, raw_var_name, question_text,
                   matched_in, concept_id)
 }
 
@@ -289,18 +257,19 @@ brfss_search <- function(cw, query, scope = c("all", "concept", "question", "raw
 # brfss_lookup()
 # ============================================================================
 
-#' Pull the full crosswalk for one or more concepts.
+#' Pull the full crosswalk for one or more concepts
 #'
 #' @param cw A loaded crosswalk object.
 #' @param concept_id Character vector of concept IDs.
-#' @return A tibble mapping the concept to all relevant years and surveys.
+#' @return A tibble mapping the concept(s) to all relevant years and sources.
 #' @export
 brfss_lookup <- function(cw, concept_id) {
-  if (length(concept_id) == 0) return(tibble::tibble())
+  if (length(concept_id) == 0L) return(tibble::tibble())
 
   unknown <- setdiff(concept_id, cw$concepts$concept_id)
   if (length(unknown)) {
-    warning("Unknown concept_id(s): ", paste(unknown, collapse = ", "))
+    warning("Unknown concept_id(s): ", paste(unknown, collapse = ", "),
+            call. = FALSE)
   }
 
   cw$concept_map |>
@@ -308,22 +277,22 @@ brfss_lookup <- function(cw, concept_id) {
     dplyr::left_join(cw$concepts, by = "concept_id") |>
     dplyr::left_join(
       cw$inventory |>
-        dplyr::select(survey, year, raw_var_name,
+        dplyr::select(source, year, raw_var_name,
                       question_text, position, var_kind, module,
                       missing_values_raw, source_file, parse_notes),
-      by = c("survey", "year", "raw_var_name")
+      by = c("source", "year", "raw_var_name")
     ) |>
-    dplyr::arrange(.data$concept_id, .data$survey, .data$year)
+    dplyr::arrange(.data$concept_id, .data$source, .data$year)
 }
 
 # ============================================================================
 # brfss_harmonize_vec()
 # ============================================================================
 
-#' Apply a recode rule to a raw-value vector.
+#' Apply a recode rule to a raw-value vector
 #'
 #' @param x Raw value vector.
-#' @param recode_type "identity", "inline", or "function".
+#' @param recode_type One of `"identity"`, `"inline"`, or `"function"`.
 #' @param recode_rule The string rule or function name.
 #' @param is_missing_codes Character vector of raw codes to force to NA.
 #' @return A character vector of harmonized values.
@@ -348,150 +317,9 @@ brfss_harmonize_vec <- function(x, recode_type, recode_rule = NA_character_,
       fn <- .get_recode_fn(recode_rule)
       as.character(fn(xn))
     },
-    stop(sprintf("Unknown recode_type: '%s' (expected identity / inline / function)",
-                 recode_type))
+    stop(sprintf(
+      "Unknown recode_type: '%s' (expected identity / inline / function)",
+      recode_type
+    ), call. = FALSE)
   )
-}
-
-# ============================================================================
-# brfss_pull()
-# ============================================================================
-
-#' Pull one or more concepts from user data.
-#'
-#' @param cw A loaded crosswalk object.
-#' @param concept_ids Character vector of concept IDs to pull.
-#' @param data Optional. Named list of tibbles/data.frames.
-#' @param id_cols Character vector of column names to preserve (e.g., "SEQNO").
-#' @param harmonize If TRUE (default), apply recode rules.
-#' @param keep_raw If TRUE, keep the raw value alongside the harmonized one.
-#' @param output String: "long" (default) or "wide".
-#' @return A long or wide tibble of harmonized concept values.
-#' @export
-brfss_pull <- function(cw, concept_ids, data = NULL,
-                       id_cols = character(),
-                       harmonize = TRUE,
-                       keep_raw = FALSE,
-                       output = c("long", "wide")) {
-
-  output <- match.arg(output)
-
-  cm <- cw$concept_map |>
-    dplyr::filter(.data$concept_id %in% .env$concept_ids)
-
-  if (nrow(cm) == 0) {
-    warning("No concept_map rows for the requested concept_ids.")
-    return(tibble::tibble())
-  }
-
-  miss_by_var <- cw$values |>
-    dplyr::filter(.data$is_missing) |>
-    dplyr::group_by(.data$survey, .data$year, .data$raw_var_name) |>
-    dplyr::summarize(missing_codes = list(unique(.data$code)), .groups = "drop")
-
-  out_parts <- list()
-
-  for (i in seq_len(nrow(cm))) {
-    row   <- cm[i, ]
-    key   <- sprintf("%s_%d", row$survey, row$year)
-
-    df <- if (!is.null(data)) data[[key]] else .fetch_from_pool(row$survey, row$year)
-
-    if (is.null(df)) next
-    if (!(row$raw_var_name %in% names(df))) next
-
-    raw_vec <- df[[row$raw_var_name]]
-    n <- length(raw_vec)
-
-    part <- tibble::tibble(
-      concept_id   = rep(row$concept_id,   n),
-      survey       = rep(row$survey,       n),
-      year         = rep(row$year,         n),
-      raw_var_name = rep(row$raw_var_name, n)
-    )
-    for (col in id_cols) part[[col]] <- df[[col]]
-
-    if (keep_raw || !harmonize) part$raw_value <- as.character(raw_vec)
-
-    if (harmonize) {
-      mc <- miss_by_var |>
-        dplyr::filter(
-          .data$survey == row$survey,
-          .data$year == row$year,
-          .data$raw_var_name == row$raw_var_name
-        ) |>
-        dplyr::pull(.data$missing_codes)
-      mc <- if (length(mc) == 0) character() else mc[[1]]
-
-      part$harmonized_value <- brfss_harmonize_vec(
-        raw_vec, recode_type = row$recode_type,
-        recode_rule = row$recode_rule, is_missing_codes = mc
-      )
-    }
-    out_parts[[length(out_parts) + 1]] <- part
-  }
-
-  long_df <- dplyr::bind_rows(out_parts)
-
-  if (output == "wide" && nrow(long_df) > 0) {
-    val_cols <- if (keep_raw && harmonize) {
-      c("harmonized_value", "raw_value")
-    } else if (harmonize) {
-      "harmonized_value"
-    } else {
-      "raw_value"
-    }
-
-    wide_df <- long_df |>
-      dplyr::select(survey, year, dplyr::all_of(id_cols),
-                    concept_id, dplyr::all_of(val_cols)) |>
-      tidyr::pivot_wider(
-        names_from  = "concept_id",
-        values_from = dplyr::all_of(val_cols)
-      )
-
-    if (length(val_cols) == 1) {
-      names(wide_df) <- gsub(paste0("^", val_cols, "_"), "", names(wide_df))
-    }
-    return(wide_df)
-  }
-
-  long_df
-}
-
-# ============================================================================
-# brfss_detect_year()
-# ============================================================================
-
-#' Auto-detect the BRFSS survey year from a raw CSV file
-#'
-#' Peeks at the first 5 rows of a CSV to find the SEQNO column and
-#' extracts the 4-digit survey year from the leading characters.
-#'
-#' @param file_path Full path to the CSV file.
-#' @return Integer representing the survey year (e.g., 2018), or NULL if it fails.
-#' @export
-brfss_detect_year <- function(file_path) {
-
-  if (!file.exists(file_path)) return(NULL)
-
-  # Read ONLY the first 5 rows to make this lightning fast
-  peek <- suppressWarnings(
-    readr::read_csv(file_path, n_max = 5, show_col_types = FALSE, progress = FALSE)
-  )
-
-  # Find the SEQNO column (ignoring case, just in case)
-  seq_col <- grep("^seqno", names(peek), ignore.case = TRUE, value = TRUE)
-
-  if (length(seq_col) == 0) {
-    warning(sprintf("Could not find a SEQNO column in %s", basename(file_path)))
-    return(NULL)
-  }
-
-  # Extract the first 4 characters of the first row's SEQNO
-  first_seq <- as.character(peek[[seq_col[1]]][1])
-  year_str <- substr(first_seq, 1, 4)
-
-  # Convert to integer and return
-  as.integer(year_str)
 }

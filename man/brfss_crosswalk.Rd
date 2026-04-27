@@ -2,19 +2,35 @@
 % Please edit documentation in R/crosswalk.R
 \name{brfss_crosswalk}
 \alias{brfss_crosswalk}
-\title{Load the BRFSS crosswalk into memory.}
+\title{Load the master BRFSS crosswalk}
 \usage{
-brfss_crosswalk(path = NULL, years = NULL)
+brfss_crosswalk(path = NULL, dataset = NULL, years = NULL)
 }
 \arguments{
-\item{path}{Directory containing the CSVs. Defaults to NULL, which automatically
-finds the bundled crosswalk inside the installed brfssTools package.}
+\item{path}{Optional directory containing the crosswalk CSVs. Defaults
+to the bundled crosswalk inside the installed package.}
 
-\item{years}{Optional integer vector of years to load (e.g., c(2018, 2019)).}
+\item{dataset}{Optional character vector of datasets to filter the
+\code{concept_map} to. For example, \code{dataset = "OR"} keeps rules tagged
+\code{"core"} plus \code{"OR"}. \code{NULL} (default) returns the full master
+crosswalk unfiltered.}
+
+\item{years}{Optional integer vector of years to load.}
 }
 \value{
-A list of tibbles representing the crosswalk schema.
+A list of tibbles: \code{inventory}, \code{values}, \code{concepts},
+\code{concept_values}, and \code{concept_map}.
 }
 \description{
-Load the BRFSS crosswalk into memory.
+Reads the bundled crosswalk CSVs and returns them as a list of tibbles.
+One master crosswalk covers every dataset; rules carry a \code{source} tag
+indicating where they apply: \code{"core"} for rules that hold across all
+BRFSS datasets, or a state code (e.g. \code{"OR"}) for state-added items.
+}
+\examples{
+\dontrun{
+cw_full <- brfss_crosswalk()
+cw_or   <- brfss_crosswalk(dataset = "OR", years = 2018:2023)
+cw_us   <- brfss_crosswalk(dataset = "National")
+}
 }

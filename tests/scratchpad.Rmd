@@ -1,0 +1,10 @@
+
+```{r}
+library(devtools)
+library(testthat)
+
+devtools::document()
+devtools::test()
+devtools::check()
+```
+

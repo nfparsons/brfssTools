@@ -1,3 +1,13 @@
-^brfssTools\.Rproj$
+^archive$
+^.*\.Rproj$
 ^\.Rproj\.user$
+^\.github$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
 ^LICENSE\.md$
+^cran-comments\.md$
+^README\.Rmd$
+^\.lintr$
+^\.positai$
+^\.claude$

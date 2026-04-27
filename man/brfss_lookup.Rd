@@ -2,7 +2,7 @@
 % Please edit documentation in R/crosswalk.R
 \name{brfss_lookup}
 \alias{brfss_lookup}
-\title{Pull the full crosswalk for one or more concepts.}
+\title{Pull the full crosswalk for one or more concepts}
 \usage{
 brfss_lookup(cw, concept_id)
 }
@@ -12,8 +12,8 @@ brfss_lookup(cw, concept_id)
 \item{concept_id}{Character vector of concept IDs.}
 }
 \value{
-A tibble mapping the concept to all relevant years and surveys.
+A tibble mapping the concept(s) to all relevant years and sources.
 }
 \description{
-Pull the full crosswalk for one or more concepts.
+Pull the full crosswalk for one or more concepts
 }

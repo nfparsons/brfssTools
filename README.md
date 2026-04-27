@@ -1,91 +1,119 @@
 # brfssTools 🛠️
 
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
-Working with longitudinal Oregon BRFSS (Behavioral Risk Factor Surveillance System) data is historically tedious. Variable names change, value codes shift (e.g., "1" means "Yes" in 2015, but "2" means "Yes" in 2016), and question text drifts. Furthermore, the transition to REAL-D demographic standards between 2021 and 2024 fractured race and ethnicity data into dozens of disparate array columns.
 
-`brfssTools` is a unified harmonization engine that solves this. It allows analysts to effortlessly query, load, and harmonize restricted Oregon BRFSS data across multiple years using a simple, `tidycensus`-like workflow.
+Working with longitudinal BRFSS (Behavioral Risk Factor Surveillance System) data is historically tedious. Variable names change, value codes shift (e.g., "1" means "Yes" in 2015, but "2" means "Yes" in 2016), and question text drifts. Furthermore, the transition to REAL-D demographic standards between 2021 and 2024 fractured race and ethnicity data into dozens of disparate array columns. And if you want to combine state-restricted data (e.g., Oregon) with the public national CDC files, the bookkeeping multiplies.
 
-> **Note:** Because BRFSS microdata is restricted, this package **does not** include the raw data. It relies on a "Bring Your Own Data" (BYOD) architecture.
+`brfssTools` is a unified harmonization engine that solves this. It provides a `tidycensus`-style workflow: register or download a pool of raw survey files, search a bundled master crosswalk, and pull harmonized concepts as a tidy tibble — across years, across datasets.
 
 ## Installation
 
-You can install the development version of `brfssTools` from GitHub using:
-
 ```r
-# install.packages("devtools")
+# install.packages("pak")
 pak::pak("nfparsons/brfssTools")
 ```
 
-## The "Bring Your Own Data" (BYOD) Workflow
+For national CDC data support, also install `haven`:
 
-Because you cannot share restricted OHA data, `brfssTools` acts purely as a computation and harmonization engine.
+```r
+pak::pak("haven")
+```
 
-To use it, simply place your raw yearly Oregon BRFSS files (saved as `.csv` files) into a single secure local or network directory. The files do not need a specific naming convention; the package will auto-detect the survey year based on the internal `SEQNO` column.
-
-### 1. Set Your Data Pool
-Tell the package where your raw data lives. You only need to do this once per session.
+## Quick start: national CDC BRFSS
 
 ```r
 library(brfssTools)
 
-# Point the package to your secure folder of raw .csv files
-brfss_set_pool("Z:/Secure_Data/BRFSS/Raw_Files")
-```
+# 1. Pull a few years of national LLCP data from CDC into the user cache.
+#    This is a one-time setup per machine, per year.
+brfss_download(2020:2023)
+#> Downloading BRFSS 2020 from CDC...
+#>   -> ~/.cache/R/brfssTools/LLCP2020.XPT
+#> ...
+#> Indexed 4 file(s) for dataset 'National'.
 
-### 2. Load the Crosswalk
-The package relies on an internal "Rosetta Stone" called the concept map. This map translates messy, drifting raw variables into clean, standardized `concept_ids`.
+# 2. Load the master crosswalk filtered to national-applicable rules
+cw <- brfss_crosswalk(dataset = "National", years = 2020:2023)
 
-```r
-# Load the master crosswalk rules built into the package
-cw <- brfss_load_crosswalk()
-
-# Or, load rules strictly for specific years to save memory
-cw_recent <- brfss_load_crosswalk(years = 2022:2024)
-```
-
-### 3. Search for Variables
-Not sure what a variable was called in 2016 vs 2023? Search the crosswalk by concept name or raw question text.
-
-```r
-brfss_search(cw, "asthma")
-```
-
-### 4. Pull Harmonized Data
-Instead of writing brittle `dplyr::case_when()` scripts to track column names across a dozen files, just ask for the `concept_ids` you want. The engine will silently fetch the correct files from your secure pool, apply the historical recode rules, handle survey skip logic (converting missing codes to `NA`), and return a clean dataset.
-
-```r
-# Pull harmonized mental health and geography data
+# 3. Pull harmonized concepts. Filter by state if you only need a few.
 my_data <- brfss_pull(
-  cw = cw,
-  concept_ids = c("survey_weight", "psu", "strata", "multnomah_flag", "fmd"),
-  id_cols = "SEQNO",
-  output = "wide"
+  cw,
+  concept_ids = c("survey_weight", "psu", "strata", "fmd"),
+  dataset     = "National",
+  years       = 2020:2023,
+  states      = c("OR", "WA", "ID"),   # USPS or FIPS, your choice
+  id_cols     = "SEQNO",
+  output      = "wide"
 )
 ```
 
-### 5. Untangling the Race & Ethnicity Mess
-Between 2012 and 2024, Oregon BRFSS shifted from basic summary columns to highly granular REAL-D arrays (e.g., `RE1` through `RE10`).
+## Quick start: state-restricted data (BYOD)
 
-`brfssTools` includes a dedicated demographic helper that scans across all historical and modern race columns to derive a single, standardized demographic variable. You can tailor the output to your reporting needs:
+For Oregon and other state-restricted data, point the package at your secure data directory. Files can be `.csv` or `.xpt` — year is auto-detected from filename or the `SEQNO` column.
 
 ```r
-# Pull the raw race array concepts first
-brfss_demographics <- brfss_pull(cw, c("race_array_1", "race_array_2", "hisp_flag"), output = "wide")
+brfss_set_pool("OR", "Z:/Secure_Data/BRFSS/Raw_Files")
 
-# Option A: Strict CDC 8-Level mutually exclusive standard
-brfss_demographics |>
-  brfss_race(standard = "cdc")
+cw <- brfss_crosswalk(dataset = "OR", years = 2018:2023)
 
-# Option B: High-level minimum categories (e.g., White NH vs. BIPOC)
-brfss_demographics |>
-  brfss_race(standard = "fewest")
-
-# Option C: Full REAL-D granularity (creates specific binary indicator columns)
-brfss_demographics |>
-  brfss_race(standard = "reald")
+my_data <- brfss_pull(
+  cw,
+  concept_ids = c("survey_weight", "psu", "strata", "multnomah_flag", "fmd"),
+  dataset     = "OR",
+  id_cols     = "SEQNO",
+  output      = "wide"
+)
 ```
 
-## How It Works Under the Hood
-The engine is driven by a `concept_map.csv` file bundled inside the package. This map links raw variables (like `CTYANSI` or `region_2016`) to standard concepts (like `multnomah_flag`) and provides the recode logic (`051=1; 51=1; 1=1`).
+## The master concept map
 
-If a rule ever needs to be updated, it is updated centrally in the package's concept map, instantly fixing the logic for all future data pulls.
+There is one crosswalk for everything. Each rule in the `concept_map` carries a `source` tag that controls where it applies:
+
+| `source` value | Meaning                                                      |
+|----------------|--------------------------------------------------------------|
+| `"core"`       | Applies to every dataset (national LLCP and any state)       |
+| `"OR"`         | Oregon state-added items only                                |
+| `"WA"`, `"CA"`, ... | (Future) State-added items for that state                  |
+
+When you call `brfss_pull(..., dataset = "National")`, only `core` rules are applied. When you call `brfss_pull(..., dataset = "OR")`, both `core` and `OR` rules are applied — so Oregon's state-added questions show up alongside the LLCP core. Adding a new state means tagging that state's rules with the state code; no schema changes, no parallel maps.
+
+If you have a legacy `concept_map` CSV with a `survey` column (values `"BRFSS"`), it loads transparently — the column is renamed to `source` and values are coerced to `"core"` on the fly.
+
+## Searching the crosswalk
+
+Not sure what a variable was called in 2016 vs 2023? Search the crosswalk by concept name, raw question text, or raw variable name:
+
+```r
+brfss_search(cw, "asthma")
+brfss_search(cw, "ASTHNOW", scope = "raw_var")
+```
+
+## Untangling race and ethnicity
+
+Between 2012 and 2024, BRFSS shifted from basic summary columns to highly granular REAL-D arrays (e.g., `RE1` through `RE10`). The `brfss_race()` helper scans across all historical and modern race columns to derive a single, standardized demographic variable.
+
+```r
+demos <- brfss_pull(
+  cw, c("race_array_1", "race_array_2", "hisp_flag"),
+  dataset = "OR", output = "wide"
+)
+
+# Strict CDC 8-level mutually exclusive standard
+demos |> brfss_race(standard = "cdc")
+
+# High-level minimum categories (e.g., White NH vs. BIPOC)
+demos |> brfss_race(standard = "fewest")
+
+# Full REAL-D granularity (binary indicator columns)
+demos |> brfss_race(standard = "reald")
+```
+
+## Cache directory
+
+National downloads land in [`brfss_cache_dir()`](R/download.R) — the OS-appropriate user cache path provided by `tools::R_user_dir()`. You can override per-call with `brfss_download(years, dir = "...")`, or relocate by running `brfss_download()` once with a custom `dir` and pointing future sessions at it via `brfss_set_pool("National", "...")`.
+
+## How it works under the hood
+
+The engine is driven by a `concept_map.csv` bundled inside the package. This map links raw variables (like `CTYANSI` or `region_2016`) to standard concepts (like `multnomah_flag`) and provides the recode logic (`051=1; 51=1; 1=1`).
+
+If a rule needs to be updated, it's updated centrally in the map — instantly fixing the logic for all future pulls.
