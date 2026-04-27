@@ -1,5 +1,5 @@
 
-```{r}
+```{r eval=FALSE}
 library(devtools)
 library(testthat)
 
@@ -8,25 +8,28 @@ devtools::test()
 devtools::check()
 ```
 
+## National CDC BRFSS
+
 ```{r}
 library(brfssTools)
 
 # 1. Run the audit and save it (so you don't have to re-run)
 vintage <- c(2012:2024)
 brfss_download(vintage)
-cw <- brfss_crosswalk(dataset = "National", year = vintage) 
-audit <- brfss_crosswalk_audit(cw)
-saveRDS(audit, "~/audit_results.rds")
+cw_nat <- brfss_crosswalk(dataset = "National", year = vintage) 
+audit_nat <- brfss_crosswalk_audit(cw_nat)
+saveRDS(audit_nat, "~/audit_results_nat.rds")
+audit_nat <- rio::import("~/audit_results_nat.rds")
 
 # 2. See how big the problem is
-audit |> dplyr::count(needs_action)
+audit_nat |> dplyr::count(needs_action)
 
 # 3. Look at the unique raw_var_names that fail. Group similar ones.
-audit |>
+audit_nat |>
   dplyr::filter(needs_action) |>
   dplyr::count(raw_var_name, sort = TRUE)
 
-audit |>
+audit_nat |>
   dplyr::filter(needs_action) |>
   dplyr::count(raw_var_name, sort = TRUE) |>
   print(n = 50)
@@ -41,11 +44,107 @@ audit |>
 #    - or whatever feels right
 
 # 6. Save the file back
-readr::write_csv(cm_updated,
-                 "inst/extdata/concept_map_brfss.csv", na = "")
+# readr::write_csv(cm_updated,
+#                 "inst/extdata/concept_map_brfss.csv", na = "")
 
 # 7. Rebuild package, run tests, commit. Done.
 ```
+
+## BYOD Oregon
+
+```{r}
+brfss_set_pool("OR", "//nas3/Hlth-Home/nathanp9/data-repo/oha__behavioral_risk_factor_surveillance_system/restricted")
+cw_or <- brfss_crosswalk(dataset = "OR", year = vintage)
+audit_or <- brfss_crosswalk_audit(cw_or)
+saveRDS(audit_or, "~/audit_results_or.rds")
+audit_or <- rio::import("~/audit_results_or.rds")
+
+# 2. See how big the problem is
+audit_or |> dplyr::count(needs_action)
+
+# 3. Look at the unique raw_var_names that fail. Group similar ones.
+audit_or |>
+  dplyr::filter(needs_action) |>
+  dplyr::count(raw_var_name, sort = TRUE)
+
+audit_or |>
+  dplyr::filter(needs_action) |>
+  dplyr::count(raw_var_name, sort = TRUE) |>
+  print(n = 50)
+```
+
+```{r}
+# Inventory whatever OR pool you have registered
+or_inv <- brfss_inventory_pool("OR")
+
+# Spot-check whether OR's files have BMI5 vs _BMI5, STATE vs _STATE
+or_inv |>
+  dplyr::filter(raw_var_name %in% c(
+    "BMI5", "_BMI5",
+    "BMI5CAT", "_BMI5CAT",
+    "RFBMI5", "_RFBMI5",
+    "STATE", "_STATE",
+    "AGE", "_AGE_G", "_AGE80"
+  )) |>
+  dplyr::count(raw_var_name, sort = TRUE)
+```
+
+```{r}
+or_inv |>
+  dplyr::filter(stringr::str_detect(toupper(raw_var_name), "STATE")) |>
+  dplyr::count(raw_var_name, sort = TRUE)
+```
+
+```{r}
+cm <- readr::read_csv(
+  system.file("extdata", "concept_map_brfss.csv", package = "brfssTools")
+)
+cm |>
+  dplyr::filter(raw_var_name == "AGE") |>
+  dplyr::select(concept_id, source, year, raw_var_name) |>
+  dplyr::arrange(year)
+```
+
+```{r}
+library(brfssTools)
+library(dplyr)
+library(readr)
+
+# Re-run audit (or load the saved one)
+cw    <- brfss_crosswalk(dataset = "National", year = 2012:2024)
+audit <- brfss_crosswalk_audit(cw)
+
+# OR inventory (which raw vars exist in OR at which years)
+or_inv <- brfss_inventory_pool("OR") |>
+  distinct(raw_var_name, year) |>
+  mutate(in_or = TRUE)
+
+# Cross-reference: for each needs_action row, is the var in OR at that year?
+retag_plan <- audit |>
+  filter(needs_action) |>
+  left_join(or_inv, by = c("raw_var_name", "year")) |>
+  mutate(in_or = coalesce(in_or, FALSE))
+
+# How does the plan break down?
+retag_plan |> count(in_or)
+# in_or = TRUE  → will retag to OR
+# in_or = FALSE → "phantom" rows, kept as core, surfaced for review
+
+# Look at the phantoms
+retag_plan |>
+  filter(!in_or) |>
+  count(raw_var_name, sort = TRUE) |>
+  print(n = 30)
+
+```
+
+```{r eval=FALSE}
+source("inst/migrate/05-retag-core-to-or.R")
+
+# Dry run first — no files change
+migrate_05_retag_core_to_or()
+```
+
 
 
 

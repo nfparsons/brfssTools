@@ -1,3 +1,17 @@
+# brfssTools 0.0.0.9010
+
+## Crosswalk migration
+
+* Added `inst/migrate/05-retag-core-to-or.R` — Migration 05 retags
+  `source = "core"` rows whose `raw_var_name` is absent from National
+  but present in OR's pool, flipping them to `source = "OR"`. Run
+  `migrate_05_retag_core_to_or(apply = TRUE)` from the package root,
+  with both National and OR pools registered. Defaults to a dry run
+  with sanity checks. Rows whose raw column is in neither pool
+  ("phantoms") are left as `core` and written to
+  `inst/migrate/05-phantom-review.csv` for manual review. Expected
+  effect: ~3,958 rows retagged, ~74 phantoms surfaced.
+
 # brfssTools 0.0.0.9009
 
 ## Breaking changes
