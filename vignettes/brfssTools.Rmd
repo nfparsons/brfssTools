@@ -294,27 +294,69 @@ brfss_pull(
 
 You can see the raw `1`/`2`/`9` values next to their harmonized `1`/`0`/`NA`.
 
-## Race and ethnicity: untangling the REAL-D shift
+## Demographic cleaners
 
-Between 2021 and 2024, BRFSS shifted from a small set of race summary columns to highly granular REAL-D arrays (e.g., `RE1` through `RE10` carrying detailed origin codes). `brfss_race()` operates on a wide tibble produced by `brfss_pull()` and derives a single standardized race/ethnicity variable, scanning across both legacy and modern columns.
+The `brfss_clean_*` family handles the most drift-prone demographic variables. They all share a design: take the wide tibble produced by `brfss_pull()`, look for known concept-id columns, append a standardized derived column.
+
+### Race and ethnicity
+
+OR's analyst-facing data uses the BRFSS **MRACE code system** (10 White, 20 Black, 30 AI/AN, 40 Asian umbrella, 41–47 Asian subgroups, 50 PI umbrella, 51–54 PI subgroups, 60 Other). Across years the *naming* shifts but the codes stay consistent: `RACE1`–`RACE10` (pre-2017), `MRACE1_1`–`MRACE1_14` (2017–2021), `MRACE2_01`–`MRACE2_14` (2022–2024). The crosswalk maps all of them under the canonical `race_array_*` concepts so callers don't need to know the year-specific naming.
+
+Hispanic origin lives in a parallel array: a single `HISPANC3` column (2013–2014) or four sub-flag columns (`HISPANC3_1`–`HISPANC3_4` for 2017–2021, `HISPANC3_01`–`HISPANC3_04` for 2022–2024), all carrying HISPANC3 codes (1 Mexican, 2 Puerto Rican, 3 Cuban, 4 Other Hispanic, 5 No, 7 DK, 9 Refused). These are mapped under canonical `hisp_array_*` concepts.
+
+`brfss_clean_race()` scans whatever `race_array_*` and `hisp_array_*` columns the wide tibble contains, identifies Hispanic membership from any `hisp_array_*` slot showing 1–4, and applies one of three standards:
 
 ```{r race-derivation, eval = FALSE}
 demos <- brfss_pull(
   cw,
-  concept_ids = c("race_array_1", "race_array_2", "race_array_3",
-                  "hisp_flag"),
+  concept_ids = c(paste0("race_array_", 1:14),
+                  paste0("hisp_array_", 1:4)),
   dataset = "OR",
-  id_cols = "SEQNO",
   output  = "wide"
 )
 
 # Three standards, choose based on reporting need:
-demos |> brfss_race(standard = "cdc")     # 8-level CDC mutually-exclusive
-demos |> brfss_race(standard = "fewest")  # White NH vs BIPOC vs Hispanic
-demos |> brfss_race(standard = "reald")   # Full REAL-D binary indicators
+demos |> brfss_clean_race(standard = "cdc")     # 8-level CDC mutually-exclusive
+demos |> brfss_clean_race(standard = "fewest")  # White NH vs BIPOC vs Hispanic
+demos |> brfss_clean_race(standard = "reald")   # Asian / PI subgroup indicators
 ```
 
-The three standards each produce different output columns. `cdc` adds a single `race_eth_cdc` column; `fewest` adds `race_eth_fewest`; `reald` adds a battery of `reald_*` binary indicators (Slavic, Afro-Caribbean, Hmong, Marshallese, Middle Eastern, etc.). For pre-2022 rows, the `reald_*` indicators are coerced to `NA` since those granular codes weren't collected.
+The three standards each produce different output columns: `cdc` adds `race_eth_cdc`, `fewest` adds `race_eth_fewest`, and `reald` adds a set of `reald_*` binary indicators for each Asian and Pacific Islander subgroup separable in MRACE encoding (`reald_chinese`, `reald_filipino`, `reald_native_hawaiian`, `reald_samoan`, etc.).
+
+**Granularity caveat.** MRACE is a CDC-collapsed encoding. Sub-detail that exists in OR's REX-level questionnaire — Slavic, Eastern European, Afro-Caribbean, Ethiopian, Somali, Hmong, Marshallese, Middle Eastern, North African — is rolled up before it lands in the analyst-facing file (e.g., MENA codes 80–82 collapse into MRACE 10 White). That detail is not recoverable from these columns. If you need full REAL-D detail, you'd need raw REX1–REX10 added to the data file, which is a data-shop request, not a package fix.
+
+### Age groupings
+
+BRFSS exposes age in several drift-prone forms across years (continuous top-coded `_AGE80`, 13-level `_AGEG5YR`, six-level `_AGE_G`, and a 65+ binary `_AGE65YR`). `brfss_clean_age()` picks from a menu of common groupings and uses whichever source column is available for each row, in a waterfall:
+
+```{r age-derivation, eval = FALSE}
+demos <- brfss_pull(
+  cw,
+  concept_ids = c("age_continuous", "age_5yr", "age_6group"),
+  dataset = "OR", output = "wide"
+)
+
+demos |> brfss_clean_age(scheme = "5yr")        # 13 categories
+demos |> brfss_clean_age(scheme = "6group")     # CDC default 6 categories
+demos |> brfss_clean_age(scheme = "65plus")     # binary
+demos |> brfss_clean_age(scheme = "samhsa")     # NSDUH/SAMHSA convention
+demos |> brfss_clean_age(scheme = "suicide")    # suicide-surveillance convention
+
+# Custom breaks
+demos |> brfss_clean_age(
+  scheme = "custom",
+  breaks = c(18, 30, 50, 70, Inf),
+  labels = c("18-29", "30-49", "50-69", "70+"),
+  output_col = "age_4cat"
+)
+
+# Multiple groupings on the same dataset
+demos |>
+  brfss_clean_age(scheme = "5yr",    output_col = "age_5yr_grp") |>
+  brfss_clean_age(scheme = "65plus", output_col = "age_65")
+```
+
+Each row uses the best available source. If `age_continuous` is present and non-NA, it's used; otherwise the function falls through to `age_5yr`, then `age_6group`, then `age_65plus`. Schemes that need bracket boundaries the categorical sources don't expose (`samhsa`, `custom`) require continuous age and error early if it's missing.
 
 ## Onboarding a new dataset
 
@@ -404,22 +446,28 @@ brfss_pool_status()
 
 ## Where to go from here
 
-The harmonized output of `brfss_pull()` is a regular tibble — it composes naturally with whatever you'd already use for survey analysis. A common pattern with BRFSS is `srvyr` for design-aware estimation:
+`brfss_pull()` automatically pulls survey-design variables alongside the concepts you ask for: as long as `survey_weight`, `psu`, and `strata` exist in the crosswalk, they're added to your wide-format result. (For OR data the strata column is missing for most years — `brfss_as_svy()` handles that case below.) `SEQNO` is included by default via `id_cols`. So a typical pull is already analysis-ready:
 
 ```{r srvyr-handoff, eval = FALSE}
 library(srvyr)
 
-oregon_data |>
+or_data <- brfss_pull(
+  cw, c("ASTHNOW", "GENHLTH"),
+  dataset = "OR", output = "wide"
+  # SEQNO + survey_weight + psu (+ strata if present) are auto-included
+)
+
+or_svy <- brfss_as_svy(or_data)
+
+or_svy |>
   filter(!is.na(GENHLTH)) |>
-  as_survey_design(
-    weights = survey_weight,
-    ids     = psu,
-    strata  = strata,
-    nest    = TRUE
-  ) |>
   group_by(GENHLTH) |>
-  summarize(prop = survey_mean(vartype = "ci"))
+  summarize(asthma_prev = survey_mean(ASTHNOW == "1",
+                                      na.rm   = TRUE,
+                                      vartype = "ci"))
 ```
+
+`brfss_as_svy()` handles two real-world quirks: weights come back as character (the recode engine works on strings) and get coerced to numeric; OR's missing-strata case is detected and the design built without stratification.
 
 For multi-year trend analyses you'll typically want to bind several years together — `brfss_pull()` does this for you when you pass a multi-year range, but you can also pull per-year and stack manually if you need year-specific weights or design adjustments.
 

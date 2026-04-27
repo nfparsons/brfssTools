@@ -40,6 +40,26 @@ mk_cw <- function() {
   )
 }
 
+# Variant of mk_cw with survey-design concepts mapped, used to exercise
+# the with_design auto-include behavior.
+mk_cw_with_design <- function() {
+  cw <- mk_cw()
+  design_rows <- tibble::tibble(
+    concept_id = c("survey_weight", "psu",
+                   "survey_weight", "psu"),
+    source     = c("core", "core", "core", "core"),
+    year       = c(2020L, 2020L, 2021L, 2021L),
+    raw_var_name = c("_LLCPWT", "_PSU",
+                     "_LLCPWT", "_PSU"),
+    question_text_drift = "identical",
+    recode_type = "identity",
+    recode_rule = NA_character_,
+    notes = NA_character_
+  )
+  cw$concept_map <- dplyr::bind_rows(cw$concept_map, design_rows)
+  cw
+}
+
 test_that("brfss_pull returns wide tibble with state filtering on National", {
   cw <- mk_cw()
   data <- list(
@@ -136,4 +156,72 @@ test_that("brfss_pull does NOT fall back to pool when data arg is supplied", {
                    data = data, id_cols = "SEQNO")
   expect_equal(unique(out$year), 2020L)
   expect_equal(nrow(out), 1L)
+})
+
+test_that("brfss_pull defaults id_cols to SEQNO", {
+  cw <- mk_cw()
+  data <- list(
+    OR_2020 = tibble::tibble(SEQNO = "2020000001", ASTHNOW = "1")
+  )
+  out <- brfss_pull(cw, "asthma_current", dataset = "OR", data = data)
+  expect_true("SEQNO" %in% names(out))
+  expect_equal(out$SEQNO, "2020000001")
+})
+
+test_that("brfss_pull silently skips id_cols that don't exist in the file", {
+  cw <- mk_cw()
+  data <- list(
+    OR_2020 = tibble::tibble(ASTHNOW = "1")  # no SEQNO
+  )
+  out <- brfss_pull(cw, "asthma_current", dataset = "OR", data = data)
+  expect_false("SEQNO" %in% names(out))
+})
+
+test_that("brfss_pull with_design auto-includes design concepts when present", {
+  cw <- mk_cw_with_design()
+  data <- list(
+    OR_2020 = tibble::tibble(
+      SEQNO    = "2020000001",
+      ASTHNOW  = "1",
+      `_LLCPWT` = "150.5",
+      `_PSU`   = "12345"
+    )
+  )
+  out <- brfss_pull(cw, "asthma_current", dataset = "OR",
+                   data = data, output = "wide")
+  expect_true(all(c("survey_weight", "psu", "asthma_current")
+                  %in% names(out)))
+  # strata not in cw -> not added, no warning
+  expect_false("strata" %in% names(out))
+})
+
+test_that("brfss_pull with_design = FALSE skips design auto-include", {
+  cw <- mk_cw_with_design()
+  data <- list(
+    OR_2020 = tibble::tibble(
+      SEQNO    = "2020000001",
+      ASTHNOW  = "1",
+      `_LLCPWT` = "150.5",
+      `_PSU`   = "12345"
+    )
+  )
+  out <- brfss_pull(cw, "asthma_current", dataset = "OR",
+                   data = data, output = "wide",
+                   with_design = FALSE)
+  expect_false("survey_weight" %in% names(out))
+  expect_false("psu" %in% names(out))
+  expect_true("asthma_current" %in% names(out))
+})
+
+test_that("brfss_pull with_design silently skips concepts not in crosswalk", {
+  # mk_cw has none of the design concepts. with_design = TRUE shouldn't warn.
+  cw <- mk_cw()
+  data <- list(
+    OR_2020 = tibble::tibble(SEQNO = "2020000001", ASTHNOW = "1")
+  )
+  expect_no_warning(
+    out <- brfss_pull(cw, "asthma_current", dataset = "OR",
+                     data = data, with_design = TRUE)
+  )
+  expect_true("SEQNO" %in% names(out))
 })

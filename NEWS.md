@@ -1,3 +1,90 @@
+# brfssTools 0.0.0.9004
+
+## Breaking changes
+
+* `brfss_clean_race()` is rewritten for **MRACE-encoded race arrays**, the
+  encoding actually used in OR's analyst-facing BRFSS files (and CDC
+  submissions). The previous version was calibrated for raw REX REAL-D
+  codes, which means it would have silently produced wrong answers on
+  MRACE-encoded data (e.g., flagging Filipinos as Chinese, since REX 43
+  = Chinese but MRACE 43 = Filipino). The new version:
+  - Reads race from `race_array_*` columns interpreting MRACE codes
+    (10/20/30/40/41-47/50/51-54/60).
+  - Reads Hispanic origin from a separate `hisp_array_*` column family
+    interpreting HISPANC3 codes (1-4 = Hispanic origin, 5 = No,
+    7/9 = unknown).
+  - Drops the `race_legacy_summary` fallback (no longer needed; legacy
+    OR data fits the same MRACE model).
+  - Drops REX-only `reald_*` indicators (Slavic, Eastern European,
+    Afro-Caribbean, Ethiopian, Somali, Hmong, Marshallese, Middle
+    Eastern, North African) — these aren't recoverable from MRACE
+    encoding. The `reald` standard now produces only the Asian and PI
+    subgroup indicators that MRACE preserves.
+  - Drops the year-aware NA coercion of `reald_*` columns (no longer
+    needed; MRACE codes are stable across years).
+
+* `hisp_flag` concept is renamed to `hisp_array_1` to fit the array
+  naming convention. The crosswalk migration handles this automatically.
+
+## New features
+
+* Crosswalk now ships with canonical `survey_weight`, `strata`,
+  `age_continuous`, `hisp_array_1`–`hisp_array_4`, and
+  `race_array_1`–`race_array_14` concepts, mapped to OR's per-year
+  raw column conventions:
+  - `survey_weight`: `wtrk_ABCD_abocd` (2012-2015), `wtrk_AC_aoc` (2016),
+    `wtrk_all` (2017-2024), all `source = "OR"`.
+  - `strata`: `STSTR` (2024 only, `source = "OR"`).
+  - `hisp_array_*`: `HISPANC3_*` (2017-2021), `HISPANC3_0*` (2022-2024).
+  - `race_array_*`: `RACE*` (2013-2016, `source = "core"`),
+    `MRACE1_*` (2017-2021, `source = "OR"`),
+    `MRACE2_0*` (2022-2024, `source = "OR"`).
+
+# brfssTools 0.0.0.9003
+
+## New features
+
+* `brfss_clean_age()`: derive a standardized age grouping from
+  whichever combination of age source columns is available
+  (`age_continuous`, `age_5yr`, `age_6group`, `age_65plus`). Built-in
+  schemes: `"5yr"` (13-level CDC), `"6group"` (CDC default), `"10yr"`,
+  `"65plus"` binary, `"samhsa"` (NSDUH/behavioral-health), `"suicide"`
+  (suicide-surveillance). Plus `"custom"` accepting user-supplied
+  `breaks`/`labels`. Each row uses the best available source via
+  waterfall; output is an ordered factor.
+
+## Breaking changes
+
+* `brfss_race()` is renamed to `brfss_clean_race()` for naming
+  consistency with the new `brfss_clean_*` family. The old name remains
+  as a deprecated alias that warns once and dispatches to the new
+  function. Update calls at your convenience.
+
+# brfssTools 0.0.0.9002
+
+## New features
+
+* `brfss_as_svy()`: convert a wide pull result into a `srvyr::tbl_svy`
+  for design-aware estimation. Handles the OR no-strata case
+  automatically (falls back to a single-stratum design when the
+  `strata` column is missing or all-NA), and coerces the character-typed
+  weight column back to numeric.
+
+* `brfss_pull()` now pulls survey design variables by default. New
+  `with_design = TRUE` argument silently auto-includes
+  `survey_weight`, `psu`, and `strata` in the requested concepts —
+  but only those that actually exist in the crosswalk, so the missing
+  OR strata don't trigger a warning. Set `with_design = FALSE` to opt
+  out.
+
+* `brfss_pull()` defaults `id_cols` to `"SEQNO"`. Columns that don't
+  exist in the raw file are silently skipped, so this is safe for files
+  with non-standard ID conventions.
+
+## Internal changes
+
+* `srvyr` added to Suggests (gated by `rlang::check_installed()`).
+
 # brfssTools 0.0.0.9001
 
 ## New features

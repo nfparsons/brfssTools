@@ -5568,156 +5568,156 @@ QUIT30,1,yes
 QUIT30,2,no
 QUITCON,1,yes
 QUITCON,2,no
-RACE1,10,white
-RACE1,20,black or african american
-RACE1,30,american indian or alaska native
-RACE1,41,asian indian
-RACE1,42,chinese
-RACE1,43,filipino
-RACE1,44,japanese
-RACE1,45,korean
-RACE1,46,vietnamese
-RACE1,47,other asian
-RACE1,51,native hawaiian
-RACE1,52,guamanian or chamorro
-RACE1,53,samoan
-RACE1,54,other pacific islander
-RACE1,60,other
-RACE10,10,white
-RACE10,20,black or african american
-RACE10,30,american indian or alaska native
-RACE10,41,asian indian
-RACE10,42,chinese
-RACE10,43,filipino
-RACE10,44,japanese
-RACE10,45,korean
-RACE10,46,vietnamese
-RACE10,47,other asian
-RACE10,51,native hawaiian
-RACE10,52,guamanian or chamorro
-RACE10,53,samoan
-RACE10,54,other pacific islander
-RACE10,60,other
-RACE2,10,white
-RACE2,20,black or african american
-RACE2,30,american indian or alaska native
-RACE2,41,asian indian
-RACE2,42,chinese
-RACE2,43,filipino
-RACE2,44,japanese
-RACE2,45,korean
-RACE2,46,vietnamese
-RACE2,47,other asian
-RACE2,51,native hawaiian
-RACE2,52,guamanian or chamorro
-RACE2,53,samoan
-RACE2,54,other pacific islander
-RACE2,60,other
-RACE3,10,white
-RACE3,20,black or african american
-RACE3,30,american indian or alaska native
-RACE3,41,asian indian
-RACE3,42,chinese
-RACE3,43,filipino
-RACE3,44,japanese
-RACE3,45,korean
-RACE3,46,vietnamese
-RACE3,47,other asian
-RACE3,51,native hawaiian
-RACE3,52,guamanian or chamorro
-RACE3,53,samoan
-RACE3,54,other pacific islander
-RACE3,60,other
-RACE4,10,white
-RACE4,20,black or african american
-RACE4,30,american indian or alaska native
-RACE4,41,asian indian
-RACE4,42,chinese
-RACE4,43,filipino
-RACE4,44,japanese
-RACE4,45,korean
-RACE4,46,vietnamese
-RACE4,47,other asian
-RACE4,51,native hawaiian
-RACE4,52,guamanian or chamorro
-RACE4,53,samoan
-RACE4,54,other pacific islander
-RACE4,60,other
-RACE5,10,white
-RACE5,20,black or african american
-RACE5,30,american indian or alaska native
-RACE5,41,asian indian
-RACE5,42,chinese
-RACE5,43,filipino
-RACE5,44,japanese
-RACE5,45,korean
-RACE5,46,vietnamese
-RACE5,47,other asian
-RACE5,51,native hawaiian
-RACE5,52,guamanian or chamorro
-RACE5,53,samoan
-RACE5,54,other pacific islander
-RACE5,60,other
-RACE6,10,white
-RACE6,20,black or african american
-RACE6,30,american indian or alaska native
-RACE6,41,asian indian
-RACE6,42,chinese
-RACE6,43,filipino
-RACE6,44,japanese
-RACE6,45,korean
-RACE6,46,vietnamese
-RACE6,47,other asian
-RACE6,51,native hawaiian
-RACE6,52,guamanian or chamorro
-RACE6,53,samoan
-RACE6,54,other pacific islander
-RACE6,60,other
-RACE7,10,white
-RACE7,20,black or african american
-RACE7,30,american indian or alaska native
-RACE7,41,asian indian
-RACE7,42,chinese
-RACE7,43,filipino
-RACE7,44,japanese
-RACE7,45,korean
-RACE7,46,vietnamese
-RACE7,47,other asian
-RACE7,51,native hawaiian
-RACE7,52,guamanian or chamorro
-RACE7,53,samoan
-RACE7,54,other pacific islander
-RACE7,60,other
-RACE8,10,white
-RACE8,20,black or african american
-RACE8,30,american indian or alaska native
-RACE8,41,asian indian
-RACE8,42,chinese
-RACE8,43,filipino
-RACE8,44,japanese
-RACE8,45,korean
-RACE8,46,vietnamese
-RACE8,47,other asian
-RACE8,51,native hawaiian
-RACE8,52,guamanian or chamorro
-RACE8,53,samoan
-RACE8,54,other pacific islander
-RACE8,60,other
-RACE9,10,white
-RACE9,20,black or african american
-RACE9,30,american indian or alaska native
-RACE9,41,asian indian
-RACE9,42,chinese
-RACE9,43,filipino
-RACE9,44,japanese
-RACE9,45,korean
-RACE9,46,vietnamese
-RACE9,47,other asian
-RACE9,51,native hawaiian
-RACE9,52,guamanian or chamorro
-RACE9,53,samoan
-RACE9,54,other pacific islander
-RACE9,60,other
+race_array_1,10,white
+race_array_1,20,black or african american
+race_array_1,30,american indian or alaska native
+race_array_1,41,asian indian
+race_array_1,42,chinese
+race_array_1,43,filipino
+race_array_1,44,japanese
+race_array_1,45,korean
+race_array_1,46,vietnamese
+race_array_1,47,other asian
+race_array_1,51,native hawaiian
+race_array_1,52,guamanian or chamorro
+race_array_1,53,samoan
+race_array_1,54,other pacific islander
+race_array_1,60,other
+race_array_10,10,white
+race_array_10,20,black or african american
+race_array_10,30,american indian or alaska native
+race_array_10,41,asian indian
+race_array_10,42,chinese
+race_array_10,43,filipino
+race_array_10,44,japanese
+race_array_10,45,korean
+race_array_10,46,vietnamese
+race_array_10,47,other asian
+race_array_10,51,native hawaiian
+race_array_10,52,guamanian or chamorro
+race_array_10,53,samoan
+race_array_10,54,other pacific islander
+race_array_10,60,other
+race_array_2,10,white
+race_array_2,20,black or african american
+race_array_2,30,american indian or alaska native
+race_array_2,41,asian indian
+race_array_2,42,chinese
+race_array_2,43,filipino
+race_array_2,44,japanese
+race_array_2,45,korean
+race_array_2,46,vietnamese
+race_array_2,47,other asian
+race_array_2,51,native hawaiian
+race_array_2,52,guamanian or chamorro
+race_array_2,53,samoan
+race_array_2,54,other pacific islander
+race_array_2,60,other
+race_array_3,10,white
+race_array_3,20,black or african american
+race_array_3,30,american indian or alaska native
+race_array_3,41,asian indian
+race_array_3,42,chinese
+race_array_3,43,filipino
+race_array_3,44,japanese
+race_array_3,45,korean
+race_array_3,46,vietnamese
+race_array_3,47,other asian
+race_array_3,51,native hawaiian
+race_array_3,52,guamanian or chamorro
+race_array_3,53,samoan
+race_array_3,54,other pacific islander
+race_array_3,60,other
+race_array_4,10,white
+race_array_4,20,black or african american
+race_array_4,30,american indian or alaska native
+race_array_4,41,asian indian
+race_array_4,42,chinese
+race_array_4,43,filipino
+race_array_4,44,japanese
+race_array_4,45,korean
+race_array_4,46,vietnamese
+race_array_4,47,other asian
+race_array_4,51,native hawaiian
+race_array_4,52,guamanian or chamorro
+race_array_4,53,samoan
+race_array_4,54,other pacific islander
+race_array_4,60,other
+race_array_5,10,white
+race_array_5,20,black or african american
+race_array_5,30,american indian or alaska native
+race_array_5,41,asian indian
+race_array_5,42,chinese
+race_array_5,43,filipino
+race_array_5,44,japanese
+race_array_5,45,korean
+race_array_5,46,vietnamese
+race_array_5,47,other asian
+race_array_5,51,native hawaiian
+race_array_5,52,guamanian or chamorro
+race_array_5,53,samoan
+race_array_5,54,other pacific islander
+race_array_5,60,other
+race_array_6,10,white
+race_array_6,20,black or african american
+race_array_6,30,american indian or alaska native
+race_array_6,41,asian indian
+race_array_6,42,chinese
+race_array_6,43,filipino
+race_array_6,44,japanese
+race_array_6,45,korean
+race_array_6,46,vietnamese
+race_array_6,47,other asian
+race_array_6,51,native hawaiian
+race_array_6,52,guamanian or chamorro
+race_array_6,53,samoan
+race_array_6,54,other pacific islander
+race_array_6,60,other
+race_array_7,10,white
+race_array_7,20,black or african american
+race_array_7,30,american indian or alaska native
+race_array_7,41,asian indian
+race_array_7,42,chinese
+race_array_7,43,filipino
+race_array_7,44,japanese
+race_array_7,45,korean
+race_array_7,46,vietnamese
+race_array_7,47,other asian
+race_array_7,51,native hawaiian
+race_array_7,52,guamanian or chamorro
+race_array_7,53,samoan
+race_array_7,54,other pacific islander
+race_array_7,60,other
+race_array_8,10,white
+race_array_8,20,black or african american
+race_array_8,30,american indian or alaska native
+race_array_8,41,asian indian
+race_array_8,42,chinese
+race_array_8,43,filipino
+race_array_8,44,japanese
+race_array_8,45,korean
+race_array_8,46,vietnamese
+race_array_8,47,other asian
+race_array_8,51,native hawaiian
+race_array_8,52,guamanian or chamorro
+race_array_8,53,samoan
+race_array_8,54,other pacific islander
+race_array_8,60,other
+race_array_9,10,white
+race_array_9,20,black or african american
+race_array_9,30,american indian or alaska native
+race_array_9,41,asian indian
+race_array_9,42,chinese
+race_array_9,43,filipino
+race_array_9,44,japanese
+race_array_9,45,korean
+race_array_9,46,vietnamese
+race_array_9,47,other asian
+race_array_9,51,native hawaiian
+race_array_9,52,guamanian or chamorro
+race_array_9,53,samoan
+race_array_9,54,other pacific islander
+race_array_9,60,other
 RACEBESTX,10,white
 RACEBESTX,20,black or african american
 RACEBESTX,30,american indian or alaska native
@@ -7870,8 +7870,8 @@ age5g59,2,25-34
 age5g59,3,35-44
 age5g59,4,45-54
 age5g59,5,55-59
-age65yr,1,18-64
-age65yr,2,65-99
+age_65plus,1,18-64
+age_65plus,2,65-99
 ageMAM,1,40-49
 ageMAM,2,50-64
 ageMAM,3,65-74
@@ -7887,19 +7887,19 @@ agePAP,4,65+
 ageg3cvd,1,18-54
 ageg3cvd,2,55-64
 ageg3cvd,3,65+
-ageg5yr,1,18-24
-ageg5yr,2,25-29
-ageg5yr,3,30-34
-ageg5yr,4,35-39
-ageg5yr,5,40-44
-ageg5yr,6,45-49
-ageg5yr,7,50-54
-ageg5yr,8,55-59
-ageg5yr,9,60-64
-ageg5yr,10,65-69
-ageg5yr,11,70-74
-ageg5yr,12,75-79
-ageg5yr,13,80-99
+age_5yr,1,18-24
+age_5yr,2,25-29
+age_5yr,3,30-34
+age_5yr,4,35-39
+age_5yr,5,40-44
+age_5yr,6,45-49
+age_5yr,7,50-54
+age_5yr,8,55-59
+age_5yr,9,60-64
+age_5yr,10,65-69
+age_5yr,11,70-74
+age_5yr,12,75-79
+age_5yr,13,80-99
 alteeth,1,no (age 65+)
 alteeth,2,yes (age 65+)
 asthmst,1,current

@@ -1,6 +1,6 @@
 Package: brfssTools
 Title: Harmonize Longitudinal BRFSS Survey Data
-Version: 0.0.0.9001
+Version: 0.0.0.9003
 Authors@R: 
     person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
 Description: Tools for harmonizing the Behavioral Risk Factor Surveillance
@@ -19,6 +19,7 @@ Suggests:
     haven,
     knitr,
     rmarkdown,
+    srvyr,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Imports: 

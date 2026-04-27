@@ -101,13 +101,13 @@ demos <- brfss_pull(
 )
 
 # Strict CDC 8-level mutually exclusive standard
-demos |> brfss_race(standard = "cdc")
+demos |> brfss_clean_race(standard = "cdc")
 
 # High-level minimum categories (e.g., White NH vs. BIPOC)
-demos |> brfss_race(standard = "fewest")
+demos |> brfss_clean_race(standard = "fewest")
 
 # Full REAL-D granularity (binary indicator columns)
-demos |> brfss_race(standard = "reald")
+demos |> brfss_clean_race(standard = "reald")
 ```
 
 ## Cache directory
