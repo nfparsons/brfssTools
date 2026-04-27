@@ -8,3 +8,46 @@ devtools::test()
 devtools::check()
 ```
 
+```{r}
+library(brfssTools)
+
+# 1. Run the audit and save it (so you don't have to re-run)
+vintage <- c(2012:2024)
+brfss_download(vintage)
+cw <- brfss_crosswalk(dataset = "National", year = vintage) 
+audit <- brfss_crosswalk_audit(cw)
+saveRDS(audit, "~/audit_results.rds")
+
+# 2. See how big the problem is
+audit |> dplyr::count(needs_action)
+
+# 3. Look at the unique raw_var_names that fail. Group similar ones.
+audit |>
+  dplyr::filter(needs_action) |>
+  dplyr::count(raw_var_name, sort = TRUE)
+
+audit |>
+  dplyr::filter(needs_action) |>
+  dplyr::count(raw_var_name, sort = TRUE) |>
+  print(n = 50)
+
+# 4. Decide retag rules. Most are "yes, retag to OR." A few might be
+#    "no, leave alone — that's a National variable that got renamed in
+#    that year." A few might be "delete, this row was a mistake."
+
+# 5. Edit concept_map_brfss.csv to reflect those decisions. This can be:
+#    - a single dplyr pipeline that overwrites source for matching rows
+#    - or hand-editing the CSV in Excel for a few hundred rows
+#    - or whatever feels right
+
+# 6. Save the file back
+readr::write_csv(cm_updated,
+                 "inst/extdata/concept_map_brfss.csv", na = "")
+
+# 7. Rebuild package, run tests, commit. Done.
+```
+
+
+
+
+

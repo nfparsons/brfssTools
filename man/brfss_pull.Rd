@@ -11,7 +11,8 @@ brfss_pull(
   years = NULL,
   states = NULL,
   data = NULL,
-  id_cols = character(),
+  id_cols = "SEQNO",
+  with_design = TRUE,
   harmonize = TRUE,
   keep_raw = FALSE,
   output = c("long", "wide")
@@ -39,8 +40,16 @@ the sole source of data - the registered pool is not consulted, even
 for years not present in the list (those years are simply skipped).
 Primarily useful for testing.}
 
-\item{id_cols}{Character vector of column names to preserve from the raw
-file (e.g., \code{"SEQNO"}).}
+\item{id_cols}{Character vector of column names to preserve from the
+raw file. Defaults to \code{"SEQNO"}. Columns that don't exist in the
+raw file are silently skipped.}
+
+\item{with_design}{If \code{TRUE} (default), automatically appends the
+survey-design concepts \code{"survey_weight"}, \code{"psu"}, and \code{"strata"} to
+the requested \code{concept_ids}, but only those that actually exist in
+the crosswalk. This makes pull results survey-ready by default and
+composes naturally with \code{\link[=brfss_as_svy]{brfss_as_svy()}}. Set \code{FALSE} if you really
+want to skip them.}
 
 \item{harmonize}{If \code{TRUE} (default), apply recode rules.}
 
@@ -65,17 +74,23 @@ alongside the LLCP core.
 \dontrun{
 brfss_set_pool("OR", "Z:/secure/oregon_brfss")
 cw <- brfss_crosswalk(dataset = "OR", years = 2018:2023)
-brfss_pull(cw, c("survey_weight", "fmd"),
-           dataset = "OR",
-           years   = 2018:2023,
-           id_cols = "SEQNO",
-           output  = "wide")
+# Design vars (survey_weight, psu, strata) auto-included
+or_data <- brfss_pull(cw, c("ASTHNOW", "GENHLTH"),
+                      dataset = "OR",
+                      output  = "wide")
 
-# National example
+# Hand off to srvyr in one call
+or_svy <- brfss_as_svy(or_data)
+
+# National example with state filter
 brfss_download(2022:2023)
 cw_us <- brfss_crosswalk(dataset = "National")
-brfss_pull(cw_us, c("survey_weight", "fmd"),
+brfss_pull(cw_us, c("ASTHNOW", "GENHLTH"),
            dataset = "National",
            states  = c("OR", "WA", "ID"))
 }
+}
+\seealso{
+\code{\link[=brfss_as_svy]{brfss_as_svy()}} to convert a wide pull result into a \code{srvyr}
+survey design.
 }

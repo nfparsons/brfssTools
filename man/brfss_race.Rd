@@ -2,19 +2,28 @@
 % Please edit documentation in R/demographics.R
 \name{brfss_race}
 \alias{brfss_race}
-\title{Derive Standardized Race/Ethnicity from BRFSS Data}
+\title{Derive Standardized Race/Ethnicity (deprecated)}
 \usage{
 brfss_race(df, standard = c("fewest", "cdc", "reald"))
 }
 \arguments{
-\item{df}{A wide dataframe produced by \code{brfss_pull()}.}
+\item{df}{A wide dataframe produced by \code{\link[=brfss_pull]{brfss_pull()}}.}
 
-\item{standard}{String: "fewest", "cdc", or "reald".}
+\item{standard}{String: \code{"fewest"}, \code{"cdc"}, or \code{"reald"}.
+\itemize{
+\item \code{"fewest"} produces a single column \code{race_eth_fewest} with three
+levels: Hispanic/Latino, White Non-Hispanic, BIPOC/Global Majority.
+\item \code{"cdc"} produces a single column \code{race_eth_cdc} with eight
+mutually-exclusive levels.
+\item \code{"reald"} produces a set of \verb{reald_*} binary indicator columns
+for each Asian and Pacific Islander subgroup separable in MRACE.
+}}
 }
 \value{
-The dataframe appended with the requested demographic standard.
+The dataframe with the requested demographic standard appended.
 }
 \description{
-Handles the longitudinal shift from basic summary columns (pre-2022)
-to the expansive REAL-D arrays (2022+).
+Use \code{\link[=brfss_clean_race]{brfss_clean_race()}} instead. Kept as an alias for backwards
+compatibility.
 }
+\keyword{internal}

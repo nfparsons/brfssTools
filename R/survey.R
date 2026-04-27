@@ -28,7 +28,8 @@
 #'   `output = "wide"`. Must contain a numeric-coercible weight column.
 #' @param weights Name of the weight column. Default `"survey_weight"`.
 #' @param ids Name of the PSU / cluster column. Default `"psu"`. If the
-#'   column is missing, the design uses `~1` (no clustering).
+#'   column is missing, the design is built without a clustering
+#'   argument (srvyr defaults to one cluster per row).
 #' @param strata Name of the stratum column. Default `"strata"`. If the
 #'   column is missing or all-NA, the design is built without
 #'   stratification.
@@ -91,35 +92,28 @@ brfss_as_svy <- function(data,
   data <- data[!bad, , drop = FALSE]
   data[[weights]] <- wt_num[!bad]
 
-  # Decide stratification and clustering. srvyr accepts formula
-  # arguments, which is the cleanest way to pass column names from
-  # variables (no NSE games).
+  # Decide stratification and clustering.
   use_strata <- !is.null(strata) &&
     strata %in% names(data) &&
     !all(is.na(data[[strata]]))
   use_ids <- !is.null(ids) && ids %in% names(data)
 
-  weights_form <- stats::as.formula(paste0("~", weights))
-  ids_form     <- if (use_ids) {
-    stats::as.formula(paste0("~", ids))
-  } else {
-    stats::as.formula("~1")
+  # Build the srvyr call dynamically. We inject column names as bare
+  # symbols via `!!rlang::sym()`, which substitutes them at parse time
+  # before srvyr's NSE machinery captures the arguments. This avoids
+  # the inconsistency in srvyr's tidyselect handling — `dplyr::all_of()`
+  # works for some paths (ids) but not others (strata, where it
+  # produces an empty-formula error). Args for absent ids / strata are
+  # OMITTED rather than passed as NULL, because srvyr's NULL handling
+  # also differs across paths.
+  args <- list(.data = data, weights = rlang::sym(weights))
+  if (use_ids) {
+    args$ids <- rlang::sym(ids)
+  }
+  if (use_strata) {
+    args$strata <- rlang::sym(strata)
+    args$nest   <- isTRUE(nest)
   }
 
-  if (use_strata) {
-    strata_form <- stats::as.formula(paste0("~", strata))
-    srvyr::as_survey_design(
-      data,
-      weights = weights_form,
-      ids     = ids_form,
-      strata  = strata_form,
-      nest    = isTRUE(nest)
-    )
-  } else {
-    srvyr::as_survey_design(
-      data,
-      weights = weights_form,
-      ids     = ids_form
-    )
-  }
+  rlang::inject(srvyr::as_survey_design(!!!args))
 }

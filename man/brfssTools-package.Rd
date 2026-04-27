@@ -14,7 +14,7 @@ workflow: download or register a pool of raw survey files, search a
 bundled master crosswalk, and pull harmonized concepts as a tidy tibble.
 }
 \author{
-\strong{Maintainer}: First Last \email{first.last@example.com}
+\strong{Maintainer}: Nathan Parsons \email{nathan.f.parsons@gmail.com}
 
 }
 \keyword{internal}

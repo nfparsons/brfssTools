@@ -1,8 +1,84 @@
+# brfssTools 0.0.0.9009
+
+## Breaking changes
+
+* `brfss_state_tag_audit()` renamed to `brfss_crosswalk_audit()`. The
+  old name suggested the function only audits state tags, but it
+  audits the crosswalk against a reference pool's variable inventory
+  more generally. The new name is the family name; future audits of
+  other crosswalk aspects (value labels, drift annotations) can sit
+  alongside it. File `R/state_tag_audit.R` renamed to
+  `R/crosswalk_audit.R`; test file `test-state-tag-audit.R` renamed
+  to `test-crosswalk-audit.R`. Function arguments and behavior are
+  unchanged.
+
+# brfssTools 0.0.0.9008
+
+## Breaking changes
+
+* The `years` parameter is renamed to `year` in `brfss_crosswalk()`,
+  `brfss_pull()`, and `brfss_download()`. This matches the tidycensus
+  convention (a single argument that accepts either a scalar year or
+  a vector of years) and eliminates the partial-match warning that
+  fired when callers wrote `year = ...` against the old `years`
+  signature. Update calling code:
+  - `brfss_crosswalk(dataset = "OR", years = 2018:2023)` →
+    `brfss_crosswalk(dataset = "OR", year = 2018:2023)`
+  - `brfss_pull(cw, ..., years = 2021)` → `brfss_pull(cw, ..., year = 2021)`
+  - `brfss_download(years = 2020:2023)` →
+    `brfss_download(year = 2020:2023)` (or just `brfss_download(2020:2023)`,
+    since `year` is the first positional argument)
+
+# brfssTools 0.0.0.9007
+
+## Bug fixes
+
+* `brfss_as_svy()`: switch from `dplyr::all_of()` to the `!!sym()`
+  injection pattern to inject column names. The `all_of()` approach
+  triggered a tidyselect 1.2 deprecation warning and worked
+  inconsistently across srvyr's `srvyr_select_vars()` paths — the
+  `ids` path tolerated it (with the warning) while the `strata` path
+  failed downstream in `survey::make.formula()` with an empty-formula
+  error (`<text>:2:0: unexpected end of input`). The `!!rlang::sym()`
+  approach substitutes column names at parse time, before srvyr's NSE
+  captures the arguments, so srvyr only ever sees a clean bare-name
+  reference. Implementation uses `rlang::inject()` to splice a
+  dynamically-built argument list, so absent `ids` / `strata` args are
+  *omitted* from the call rather than passed as `NULL` (avoiding the
+  same empty-formula bug in another form).
+
+# brfssTools 0.0.0.9006
+
+## Bug fixes
+
+* `brfss_as_svy()` now works with `srvyr` / `tidyselect` 1.1+. The
+  previous implementation passed formula objects to
+  `srvyr::as_survey_design()`, which `tidyselect` no longer accepts.
+  The function now uses `dplyr::all_of()` to inject column names from
+  string variables, the canonical tidyselect-friendly pattern. The
+  no-clustering case passes `ids = NULL` (which srvyr correctly
+  interprets as "no PSU") rather than a bare integer.
+
+* Roxygen `[fn()]` cross-references in `R/demographics.R` and
+  `R/pull.R` are now fully qualified as `[brfssTools::fn()]` to satisfy
+  link resolution in newer roxygen2.
+
+## Internal changes
+
+* Migration scripts in `inst/migrate/` now wrap their logic in named
+  functions (`migrate_01_canonical_naming()`, etc.) and have no
+  top-level side effects on source. Sourcing the file alone is now
+  inert; the user must invoke the function explicitly. This prevents
+  accidental re-execution if scripts are loaded outside the intended
+  context.
+
+* `TODO.md` added to `.Rbuildignore`.
+
 # brfssTools 0.0.0.9005
 
 ## New features
 
-* `brfss_state_tag_audit()`: diffs a crosswalk's `core`-tagged rules
+* `brfss_crosswalk_audit()`: diffs a crosswalk's `core`-tagged rules
   against a registered reference pool's actual variable inventory
   (typically `"National"`), to surface rows that are candidates for
   retagging to a state-specific source (`"OR"`, etc.). Useful once when

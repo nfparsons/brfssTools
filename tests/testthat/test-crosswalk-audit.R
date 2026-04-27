@@ -1,4 +1,4 @@
-# Tests for brfss_state_tag_audit().
+# Tests for brfss_crosswalk_audit().
 #
 # Strategy: register a tiny CSV-backed "National" pool with known
 # variables, build a minimal mock crosswalk with a few concept_map rows,
@@ -59,7 +59,7 @@ test_that("strict year match flags rows whose (year, var) miss in reference", {
     "or_weight",    "core",  2020L, "wtrk_all",    "identical",          "identity",   NA, NA    # not in any year
   ))
 
-  audit <- brfss_state_tag_audit(cw, reference_dataset = "National")
+  audit <- brfss_crosswalk_audit(cw, reference_dataset = "National")
 
   expect_s3_class(audit, "tbl_df")
   expect_equal(nrow(audit), 5L)
@@ -78,7 +78,7 @@ test_that("reference_years_seen lists every year a var appears in reference", {
     "gen_health", "core",  2020L, "GENHLTH",     "identical",          "identity",   NA, NA,
     "or_weight",  "core",  2020L, "wtrk_all",    "identical",          "identity",   NA, NA
   ))
-  audit <- brfss_state_tag_audit(cw, reference_dataset = "National")
+  audit <- brfss_crosswalk_audit(cw, reference_dataset = "National")
 
   # GENHLTH is in both 2020 and 2021 fixture files
   expect_equal(audit$reference_years_seen[1], "2020,2021")
@@ -102,9 +102,9 @@ test_that("relaxed match treats var as in_reference if seen in any year", {
     "survey_weight","core",  2021L, "_LLCPWT",     "identical",          "identity",   NA, NA
   ))
 
-  strict  <- brfss_state_tag_audit(cw, reference_dataset = "National",
+  strict  <- brfss_crosswalk_audit(cw, reference_dataset = "National",
                                    strict_year_match = TRUE)
-  relaxed <- brfss_state_tag_audit(cw, reference_dataset = "National",
+  relaxed <- brfss_crosswalk_audit(cw, reference_dataset = "National",
                                    strict_year_match = FALSE)
 
   expect_equal(strict$in_reference,  c(TRUE, FALSE))   # _LLCPWT not in 2021
@@ -124,9 +124,9 @@ test_that("ignore_case = TRUE matches across upper/lower case", {
     "gen_health", "core",  2020L, "genhlth",     "identical",          "identity",   NA, NA  # lower-cased
   ))
 
-  strict_default  <- brfss_state_tag_audit(cw, reference_dataset = "National",
+  strict_default  <- brfss_crosswalk_audit(cw, reference_dataset = "National",
                                            ignore_case = FALSE)
-  strict_relaxed  <- brfss_state_tag_audit(cw, reference_dataset = "National",
+  strict_relaxed  <- brfss_crosswalk_audit(cw, reference_dataset = "National",
                                            ignore_case = TRUE)
 
   expect_false(strict_default$in_reference[1])
@@ -146,7 +146,7 @@ test_that("non-core source rows are excluded by default", {
     "gen_health", "core",  2020L, "GENHLTH",     "identical",          "identity",   NA, NA,
     "or_weight",  "OR",    2020L, "wtrk_all",    "identical",          "identity",   NA, NA   # already OR
   ))
-  audit <- brfss_state_tag_audit(cw, reference_dataset = "National")
+  audit <- brfss_crosswalk_audit(cw, reference_dataset = "National")
   expect_equal(nrow(audit), 1L)
   expect_equal(audit$concept_id, "gen_health")
 })
@@ -160,7 +160,7 @@ test_that("custom current_source filters audit input correctly", {
     "gen_health", "core",  2020L, "GENHLTH",     "identical",          "identity",   NA, NA,
     "or_weight",  "OR",    2020L, "wtrk_all",    "identical",          "identity",   NA, NA
   ))
-  audit_or <- brfss_state_tag_audit(cw, reference_dataset = "National",
+  audit_or <- brfss_crosswalk_audit(cw, reference_dataset = "National",
                                     current_source = "OR",
                                     suggested_source = "core")
   expect_equal(nrow(audit_or), 1L)
@@ -178,11 +178,11 @@ test_that("audit returns empty tibble when no rows match current_source", {
   ))
 
   expect_message(
-    brfss_state_tag_audit(cw, reference_dataset = "National"),
+    brfss_crosswalk_audit(cw, reference_dataset = "National"),
     "nothing to audit"
   )
   audit <- suppressMessages(
-    brfss_state_tag_audit(cw, reference_dataset = "National")
+    brfss_crosswalk_audit(cw, reference_dataset = "National")
   )
   expect_s3_class(audit, "tbl_df")
   expect_equal(nrow(audit), 0L)
@@ -195,14 +195,14 @@ test_that("audit errors informatively when reference pool is not registered", {
     "gen_health", "core",  2020L, "GENHLTH",     "identical",          "identity",   NA, NA
   ))
   expect_error(
-    brfss_state_tag_audit(cw, reference_dataset = "National"),
+    brfss_crosswalk_audit(cw, reference_dataset = "National"),
     "registered|pool"
   )
 })
 
 test_that("audit errors when cw is not a crosswalk object", {
   expect_error(
-    brfss_state_tag_audit(list(foo = "bar")),
+    brfss_crosswalk_audit(list(foo = "bar")),
     "crosswalk"
   )
 })
