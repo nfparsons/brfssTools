@@ -2,15 +2,6 @@
 #
 # Crosswalk helper library for the brfssTools package.
 
-suppressPackageStartupMessages({
-  library(dplyr)
-  library(tidyr)
-  library(stringr)
-  library(readr)
-  library(tibble)
-  library(purrr)
-})
-
 # ============================================================================
 # Global Configuration (BYOD Workflow)
 # ============================================================================
@@ -45,7 +36,6 @@ brfss_set_pool <- function(path) {
   # Build an index mapping the year to the specific file path
   pool_index <- list()
   for (f in csv_files) {
-    # FIXED: Updated to the new brfss_ prefix
     yr <- brfss_detect_year(f)
     if (!is.null(yr)) {
       pool_index[[as.character(yr)]] <- f
@@ -97,7 +87,7 @@ brfss_set_pool <- function(path) {
 
 .parse_inline_rule <- function(rule) {
   if (is.na(rule) || !nzchar(rule)) {
-    return(setNames(character(), character()))
+    return(stats::setNames(character(), character()))
   }
   pairs <- stringr::str_split(rule, "\\s*;\\s*")[[1]]
   pairs <- pairs[nzchar(pairs)]
@@ -151,7 +141,7 @@ brfss_set_pool <- function(path) {
 )
 
 # ============================================================================
-# load_crosswalk()
+# brfss_crosswalk()
 # ============================================================================
 
 #' Load the BRFSS crosswalk into memory.
@@ -164,7 +154,7 @@ brfss_set_pool <- function(path) {
 brfss_crosswalk <- function(path = NULL, years = NULL) {
   lake <- "brfss"
 
-  # MAGIC HAPPENS HERE: Automatically find the package's internal CSVs
+  # Automatically find the package's internal CSVs
   if (is.null(path)) {
     path <- system.file("extdata", package = "brfssTools")
     if (path == "") stop("Could not find the extdata directory in brfssTools.")
@@ -220,9 +210,9 @@ brfss_crosswalk <- function(path = NULL, years = NULL) {
   } else .empty_concept_map()
 
   if (!is.null(years)) {
-    inv <- dplyr::filter(inv, year %in% years)
-    val <- dplyr::filter(val, year %in% years)
-    concept_map <- dplyr::filter(concept_map, year %in% years)
+    inv <- dplyr::filter(inv, .data$year %in% .env$years)
+    val <- dplyr::filter(val, .data$year %in% .env$years)
+    concept_map <- dplyr::filter(concept_map, .data$year %in% .env$years)
   }
 
   list(
@@ -244,50 +234,53 @@ brfss_crosswalk <- function(path = NULL, years = NULL) {
 #' @param cw A loaded crosswalk object.
 #' @param query Search pattern (regex). Case-insensitive.
 #' @param scope Where to search: "all" (default), "concept", "question", or "raw_var".
-#' @return A tibble of matched variables and concepts.
+#' @return A tibble of matching variables with the field where the match occurred.
 #' @export
-brfss_search <- function(cw, query, scope = c("all","concept","question","raw_var")) {
+brfss_search <- function(cw, query, scope = c("all", "concept", "question", "raw_var")) {
   scope <- match.arg(scope)
   rx <- stringr::regex(query, ignore_case = TRUE)
 
   joined <- cw$inventory |>
-    dplyr::left_join(cw$concept_map |>
-                       dplyr::select(concept_id, survey, year, raw_var_name),
-                     by = c("survey", "year", "raw_var_name"))
-
-  joined <- joined |>
+    dplyr::left_join(
+      cw$concept_map |>
+        dplyr::select(concept_id, survey, year, raw_var_name),
+      by = c("survey", "year", "raw_var_name")
+    ) |>
     dplyr::left_join(
       cw$concepts |>
         dplyr::select(concept_id, concept_label, construct_notes),
       by = "concept_id"
     )
 
-  match_concept  <- stringr::str_detect(
+  hit_concept  <- stringr::str_detect(
     paste(joined$concept_label, joined$construct_notes, sep = " | "), rx
   ) & !is.na(joined$concept_id)
-  match_question <- stringr::str_detect(joined$question_text, rx)
-  match_raw_var  <- stringr::str_detect(joined$raw_var_name, rx)
+  hit_question <- stringr::str_detect(joined$question_text, rx)
+  hit_raw_var  <- stringr::str_detect(joined$raw_var_name, rx)
 
-  match <- switch(
+  is_match <- switch(
     scope,
-    all       = match_concept | match_question | match_raw_var,
-    concept   = match_concept,
-    question  = match_question,
-    raw_var   = match_raw_var
+    all       = hit_concept | hit_question | hit_raw_var,
+    concept   = hit_concept,
+    question  = hit_question,
+    raw_var   = hit_raw_var
   )
-  match[is.na(match)] <- FALSE
+  is_match[is.na(is_match)] <- FALSE
 
   matched_in <- dplyr::case_when(
-    match_concept  ~ "concept",
-    match_question ~ "question",
-    match_raw_var  ~ "raw_var",
-    TRUE           ~ NA_character_
+    hit_concept  ~ "concept",
+    hit_question ~ "question",
+    hit_raw_var  ~ "raw_var",
+    TRUE         ~ NA_character_
   )
 
   joined |>
-    dplyr::mutate(matched_in = matched_in) |>
-    dplyr::filter(match) |>
-    dplyr::arrange(survey, year, raw_var_name) |>
+    dplyr::mutate(
+      matched_in = .env$matched_in,
+      is_match   = .env$is_match
+    ) |>
+    dplyr::filter(.data$is_match) |>
+    dplyr::arrange(.data$survey, .data$year, .data$raw_var_name) |>
     dplyr::select(survey, year, raw_var_name, question_text,
                   matched_in, concept_id)
 }
@@ -311,15 +304,16 @@ brfss_lookup <- function(cw, concept_id) {
   }
 
   cw$concept_map |>
-    dplyr::filter(concept_id %in% .env$concept_id) |>
+    dplyr::filter(.data$concept_id %in% .env$concept_id) |>
     dplyr::left_join(cw$concepts, by = "concept_id") |>
     dplyr::left_join(
-      cw$inventory |> dplyr::select(survey, year, raw_var_name,
-                                    question_text, position, var_kind, module,
-                                    missing_values_raw, source_file, parse_notes),
+      cw$inventory |>
+        dplyr::select(survey, year, raw_var_name,
+                      question_text, position, var_kind, module,
+                      missing_values_raw, source_file, parse_notes),
       by = c("survey", "year", "raw_var_name")
     ) |>
-    dplyr::arrange(concept_id, survey, year)
+    dplyr::arrange(.data$concept_id, .data$survey, .data$year)
 }
 
 # ============================================================================
@@ -345,7 +339,7 @@ brfss_harmonize_vec <- function(x, recode_type, recode_rule = NA_character_,
     recode_type,
     "identity" = xn,
     "inline"   = {
-      mapping    <- .parse_inline_rule(recode_rule)
+      mapping <- .parse_inline_rule(recode_rule)
       names(mapping) <- .normalize_code(names(mapping))
       idx <- match(xn, names(mapping))
       unname(mapping[idx])
@@ -372,6 +366,7 @@ brfss_harmonize_vec <- function(x, recode_type, recode_rule = NA_character_,
 #' @param harmonize If TRUE (default), apply recode rules.
 #' @param keep_raw If TRUE, keep the raw value alongside the harmonized one.
 #' @param output String: "long" (default) or "wide".
+#' @return A long or wide tibble of harmonized concept values.
 #' @export
 brfss_pull <- function(cw, concept_ids, data = NULL,
                        id_cols = character(),
@@ -382,7 +377,7 @@ brfss_pull <- function(cw, concept_ids, data = NULL,
   output <- match.arg(output)
 
   cm <- cw$concept_map |>
-    dplyr::filter(concept_id %in% .env$concept_ids)
+    dplyr::filter(.data$concept_id %in% .env$concept_ids)
 
   if (nrow(cm) == 0) {
     warning("No concept_map rows for the requested concept_ids.")
@@ -390,9 +385,9 @@ brfss_pull <- function(cw, concept_ids, data = NULL,
   }
 
   miss_by_var <- cw$values |>
-    dplyr::filter(is_missing) |>
-    dplyr::group_by(survey, year, raw_var_name) |>
-    dplyr::summarize(missing_codes = list(unique(code)), .groups = "drop")
+    dplyr::filter(.data$is_missing) |>
+    dplyr::group_by(.data$survey, .data$year, .data$raw_var_name) |>
+    dplyr::summarize(missing_codes = list(unique(.data$code)), .groups = "drop")
 
   out_parts <- list()
 
@@ -420,11 +415,14 @@ brfss_pull <- function(cw, concept_ids, data = NULL,
 
     if (harmonize) {
       mc <- miss_by_var |>
-        dplyr::filter(survey == row$survey, year == row$year, raw_var_name == row$raw_var_name) |>
-        dplyr::pull(missing_codes)
+        dplyr::filter(
+          .data$survey == row$survey,
+          .data$year == row$year,
+          .data$raw_var_name == row$raw_var_name
+        ) |>
+        dplyr::pull(.data$missing_codes)
       mc <- if (length(mc) == 0) character() else mc[[1]]
 
-      # Now correctly calls brfss_harmonize_vec
       part$harmonized_value <- brfss_harmonize_vec(
         raw_vec, recode_type = row$recode_type,
         recode_rule = row$recode_rule, is_missing_codes = mc
@@ -436,12 +434,19 @@ brfss_pull <- function(cw, concept_ids, data = NULL,
   long_df <- dplyr::bind_rows(out_parts)
 
   if (output == "wide" && nrow(long_df) > 0) {
-    val_cols <- if (keep_raw && harmonize) c("harmonized_value", "raw_value") else if (harmonize) "harmonized_value" else "raw_value"
+    val_cols <- if (keep_raw && harmonize) {
+      c("harmonized_value", "raw_value")
+    } else if (harmonize) {
+      "harmonized_value"
+    } else {
+      "raw_value"
+    }
 
     wide_df <- long_df |>
-      dplyr::select(survey, year, dplyr::all_of(id_cols), concept_id, dplyr::all_of(val_cols)) |>
+      dplyr::select(survey, year, dplyr::all_of(id_cols),
+                    concept_id, dplyr::all_of(val_cols)) |>
       tidyr::pivot_wider(
-        names_from = concept_id,
+        names_from  = "concept_id",
         values_from = dplyr::all_of(val_cols)
       )
 

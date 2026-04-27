@@ -14,7 +14,7 @@ brfss_search(cw, query, scope = c("all", "concept", "question", "raw_var"))
 \item{scope}{Where to search: "all" (default), "concept", "question", or "raw_var".}
 }
 \value{
-A tibble of matched variables and concepts.
+A tibble of matching variables with the field where the match occurred.
 }
 \description{
 Text-search the crosswalk.

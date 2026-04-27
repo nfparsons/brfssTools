@@ -1,22 +1,33 @@
 Package: brfssTools
-Title: What the Package Does (One Line, Title Case)
+Title: Harmonize Longitudinal BRFSS Survey Data
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+    person("Nathan", "Parsons", , "nathan.parsons@gmail.com", role = c("aut", "cre"))
+Description: Tools for harmonizing the Behavioral Risk Factor Surveillance
+    System (BRFSS) survey data across years, where variable names, response
+    codes, and question text drift between waves. Provides a 'tidycensus'-
+    style workflow for searching a packaged crosswalk, pulling concepts
+    from a user-supplied pool of raw survey files, and deriving
+    standardized race/ethnicity classifications from REAL-D arrays.
+    Functions take data as their first argument and return tibbles, so
+    they compose with both base R and magrittr pipes.
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Suggests: 
     knitr,
-    rmarkdown
+    rmarkdown,
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
 Imports: 
     dplyr,
     purrr,
     readr,
+    rlang,
     stringr,
     tibble,
     tidyr
+Depends:
+    R (>= 4.1)
+Config/testthat/edition: 3

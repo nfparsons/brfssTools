@@ -29,6 +29,9 @@ brfss_pull(
 
 \item{output}{String: "long" (default) or "wide".}
 }
+\value{
+A long or wide tibble of harmonized concept values.
+}
 \description{
 Pull one or more concepts from user data.
 }
