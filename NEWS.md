@@ -1,3 +1,93 @@
+# brfssTools 0.1.0
+
+First architecture-complete release. The crosswalk schema, pull
+machinery, and editor have been redesigned around a unified `concept_id`
+addressing system. User data now lives in a per-user config directory
+that persists across package upgrades.
+
+## Architecture
+
+* **Unified `concept_id` schema.** The crosswalk is now a thin
+  three-column join: `concept_id` (the unit of analysis) maps a state
+  variable and a CDC variable for each year. Different state variables
+  across years can share a `concept_id` — `ACEHURT1`/`ACEHURT2`/`ACEHURT3`
+  collapse to a single conceptual `ACEHURT`. `brfss_pull("ACEHURT")`
+  resolves to the right per-year column automatically.
+
+* **Hybrid storage layer.** Read-only package files (CDC codebook,
+  taxonomy) ship with the package; writable user files (crosswalk,
+  state codebook, transformations) live in
+  `tools::R_user_dir("brfssTools", "config")`. Per-call `path =`
+  arguments override for project-local, git-tracked configs.
+
+* **Transformations.** Two systems for derived variables:
+  * Declarative YAML *categorical maps* (preferred) — describe an
+    output column as an ordered list of `(value, label, when)` rules
+    with year-aware input aliasing. Example: `race.yaml` mirrors CDC's
+    `_RACE` calculated variable spec.
+  * Functional `.R` files (escape hatch) — for transformations YAML
+    can't express.
+  Both are detected by `brfss_pull()` from the config dir's
+  `transformations/` folder.
+
+## New functions
+
+* `brfss_init_state(state, state_codebook_path = NULL, path = NULL)`
+  scaffolds a user's config directory. State `"OR"` uses the
+  package-shipped sample as a starting point; other states require a
+  user-supplied state codebook CSV.
+* `brfss_config_path(path = NULL)` resolves the active config dir.
+* `brfss_validate_state_codebook(df)` validates an incoming state
+  codebook against the expected schema.
+* `cw_load(path = NULL)` loads the crosswalk bundle. Auto-populates
+  `concept_id` on every load.
+* `cw_save(bundle, path = NULL)` writes back with `.bak` rotation;
+  refuses to write to package extdata.
+* `cw_add_pair`, `cw_remove_pair`, `cw_update_pair`,
+  `cw_mark_state_only`, `cw_mark_cdc_only`,
+  `cw_replace_cdc_partner`, `cw_replace_state_partner`,
+  `cw_rename_concept`, `cw_recompute_concept_ids` — full CRUD.
+* `brfss_crosswalk_editor(path = NULL)` launches a local Shiny app
+  with a heatmap, edit panel, CDC-anchored ↔ State-anchored mode
+  toggle, and bulk concept-rename action.
+* `brfss_setup_categorical_map(name)`, `brfss_setup_race_map()`,
+  `brfss_load_categorical_map(fp)`,
+  `brfss_render_transformation_code(name, save = TRUE)` — declarative
+  YAML transformations.
+* `brfss_setup_transformation(name)`, `brfss_setup_race()`,
+  `brfss_list_transformations(path = NULL)` — functional `.R`
+  transformations.
+
+## Rewritten functions
+
+* `brfss_pull()` is rewritten against the new schema. Accepts
+  `concepts`, `domains`, `tags`, plus a `core_demographics` shortcut.
+  Auto-detects `source` (state vs. CDC) from registered pools.
+  Applies YAML categorical maps and functional `.R` transformations
+  per year.
+* `brfss_search(query, scope, path)` and
+  `brfss_lookup(concept_ids, path)` rewritten as thin search/lookup
+  helpers against the new bundle.
+
+## Vignettes
+
+* `state-data-workflow.Rmd` — end-to-end walkthrough for analysts with
+  state-collected BRFSS files. Oregon-shipped sample as the running
+  example; adapts to other states via `state_codebook_path`.
+* `national-data-workflow.Rmd` — end-to-end walkthrough for analysts
+  using only CDC's public LLCP files via `brfss_download()`.
+
+## Removed
+
+* The legacy `brfss_crosswalk()` API (read `concept_map`, `concepts`,
+  `concept_values` CSVs, with embedded recode rules) is replaced by
+  `cw_load()` plus the transformation system. Files
+  `concept_map_brfss.csv`, `concepts_brfss.csv`,
+  `concept_values_brfss.csv` removed from `inst/extdata/`. The functions
+  `brfss_harmonize_vec()` and `brfss_clean_race()` are gone — the same
+  logic now lives in YAML categorical maps under
+  `transformations/race.yaml`.
+
 # brfssTools 0.0.0.9010
 
 ## Crosswalk migration
