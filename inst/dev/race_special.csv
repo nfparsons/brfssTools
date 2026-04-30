@@ -1,7 +1,0 @@
-year,cdc_var,cdc_label,top_oha_var,top_oha_label,decision,notes
-2012,MRACE,Multiple Race,MRACE,MULTIPLE RACE,race,Race handled at load-time; not in active crosswalk
-2012,RRCLASS2,,Black,Black or African American,race,Race handled at load-time; not in active crosswalk
-2013,RRCLASS2,,Black,Black or African American,race,Race handled at load-time; not in active crosswalk
-2016,ADHISPA,Adult Hispanic response,hisp,Hispanic,race,Race handled at load-time; not in active crosswalk
-2016,HISPANC3,"Hispanic, Latino/a, or Spanish origin?",DHISPALAX3,"C8.3. Are you Hispanic, Latino/a, or Spanish origin?",race,Race handled at load-time; not in active crosswalk
-2016,MRACE1,Multiple Race,NHawPI,Pacific Islander,race,Race handled at load-time; not in active crosswalk

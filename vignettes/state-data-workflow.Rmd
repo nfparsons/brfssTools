@@ -1,0 +1,291 @@
+---
+title: "Workflow: state BRFSS data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Workflow: state BRFSS data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  eval     = FALSE
+)
+```
+
+This vignette walks an analyst with state-collected BRFSS files through the
+brfssTools workflow, from a fresh install to a tidy tibble ready for
+analysis. The Oregon-shipped sample is used as the running example, but
+every step generalizes — see the *Adapting for another state* section at
+the end.
+
+The code chunks are not executed when this vignette is built; they're
+documentation of the workflow against your real data on your real machine.
+
+## 1. Install the package
+
+```r
+# CRAN-style or from a private repo:
+install.packages("brfssTools")
+
+# Or from a fork / development source:
+# pak::pak("nfparsons/brfssTools")
+```
+
+A fresh install ships with the CDC codebook, taxonomy, and an Oregon
+sample crosswalk. Everything else lives in your user config directory
+(see step 3) where it persists across package upgrades.
+
+## 2. Point the package at your raw state data files
+
+Whatever state you're working with, you need a directory containing one
+file per BRFSS year — `.csv`, `.xpt`, or a mix. The files don't need to
+be specially named: `brfss_set_pool()` auto-detects year from the
+filename, and falls back to peeking at the `SEQNO` column.
+
+```r
+library(brfssTools)
+
+brfss_set_pool("OR", "Z:/Secure_Data/Oregon_BRFSS")
+#> Scanning pool for dataset 'OR'...
+#> Indexed 13 file(s) for dataset 'OR'.
+
+# Confirm what was registered:
+brfss_pool_status()
+#> # A tibble: 13 x 3
+#>    dataset  year  file
+#>    <chr>   <int>  <chr>
+#>  1 OR       2012  Z:/Secure_Data/Oregon_BRFSS/OR_BRFSS_2012.csv
+#>  2 OR       2013  Z:/Secure_Data/Oregon_BRFSS/OR_BRFSS_2013.csv
+#>  ...
+```
+
+The pool is session-scoped — registration disappears when you restart R.
+Most analysts wrap this call into a `.Rprofile` or a project setup script
+so it happens automatically when the project loads.
+
+To switch to a different folder, call `brfss_clear_pool("OR")` first, or
+just call `brfss_set_pool("OR", new_path)` again to overwrite.
+
+## 3. Initialize your state config
+
+The package reads the crosswalk and other state-specific files from a
+*config directory*. This is separate from the pool (which holds raw data
+files). The config persists across R sessions and package upgrades.
+
+For Oregon, brfssTools ships a starter crosswalk you can use as-is:
+
+```r
+brfss_init_state("OR")
+#> Initialized config for sample state 'OR' from package data.
+#> Config dir: C:/Users/.../AppData/Roaming/R/config/R/brfssTools
+```
+
+This copies the package's shipped Oregon crosswalk, codebook, and other
+files into your user config directory.
+
+If you'd rather keep everything in a project folder (so it can be
+git-tracked alongside an analysis), pass an explicit path:
+
+```r
+brfss_init_state("OR", path = "C:/projects/aces-paper/brfss_config")
+```
+
+To see where the active config lives at any time:
+
+```r
+brfss_config_path()
+```
+
+## 4. Tour the crosswalk editor (optional)
+
+The crosswalk is a CSV file you can edit by hand, but the GUI editor is
+faster for exploration and bulk operations. It launches a local Shiny
+app:
+
+```r
+brfss_crosswalk_editor()
+```
+
+The editor shows every concept × year as a heatmap. Clicking a row
+opens the edit panel on the right, where you can:
+
+* See the CDC and state labels for the variable
+* Edit the `concept_id` (the unified name brfss_pull uses)
+* Click **Rename concept everywhere** to bulk-rename across all years
+  (handy for collapsing version-suffixed names like
+  `ACEHURT1`/`ACEHURT2`/`ACEHURT3` into a single concept `ACEHURT`)
+* Toggle between **CDC-anchored** and **State-anchored** views
+
+Edits are saved to your config directory only when you click **Save**.
+Each save creates a `crosswalk.csv.bak` backup so you can recover
+mistakes.
+
+## 5. Set up a transformation (race example)
+
+Some variables don't map cleanly to a single column — race is the
+canonical example, since it's typically computed from multiple inputs
+(e.g., `_MRACE1` and `_HISPANC`) using project-specific category
+definitions.
+
+brfssTools handles these via *transformations*: small declarative YAML
+files that describe how to compute one output column from raw inputs.
+Set up the race transformation with the CDC-style template:
+
+```r
+brfss_setup_race_map()
+#> Created categorical map 'race' at:
+#>   C:/.../config/R/brfssTools/transformations/race.yaml
+```
+
+The YAML opens in your editor. The default template implements CDC's
+`_RACE` calculated variable (7 NH single-race + Hispanic + don't-know).
+Edit it to match your project's race definitions — REALD, alone-or-in-
+combination, expanded categories, whatever you need.
+
+When you save, the transformation is immediately available to
+`brfss_pull()` as a column called `race`.
+
+If you'd like a human-readable R companion file for documentation or
+methods sections, generate one:
+
+```r
+brfss_render_transformation_code("race", save = TRUE)
+```
+
+This writes `race.R` next to `race.yaml` with the YAML logic rendered as
+`dplyr::case_when()` code. (The runtime always uses the YAML; the
+generated R is for reading, not execution.)
+
+## 6. Pull data
+
+Now you're ready for the main event. `brfss_pull()` resolves a request
+into raw column lookups and transformation calls, loads the data from
+the pool, applies any transformations, and returns a tidy tibble.
+
+The simplest pattern is to ask for one or more concepts by name:
+
+```r
+df <- brfss_pull(
+  concepts = c("ACEADNED", "GENHLTH"),
+  years    = 2019:2024
+)
+#> # A tibble: ~120,000 x 7
+#>     year SEQNO       `_STATE` ACEADNED GENHLTH AGE   SEX   .weight
+#>    <int> <chr>       <chr>    <chr>    <chr>   <chr> <chr>   <dbl>
+#>  ...
+```
+
+A few things to notice:
+
+* `AGE` and `SEX` showed up automatically. By default,
+  `core_demographics = TRUE` adds them — and `race` if you've set up
+  the transformation.
+* `.weight`, `.strata`, and `.psu` came along too. These are the
+  survey-design columns brfssTools picks up from your state codebook.
+* `_STATE` and `SEQNO` come along because they're useful for joins and
+  state-level filtering.
+* The output is *wide* — one column per requested concept. Pass
+  `output = "long"` to pivot to one row per (respondent × concept).
+
+Other useful patterns:
+
+```r
+# Pull every concept in a domain:
+df_bh <- brfss_pull(
+  domains = "Behavioral Health",
+  years   = 2022:2024
+)
+
+# Combine concepts and a domain:
+df_combined <- brfss_pull(
+  concepts = c("AGE", "ACEADNED"),
+  domains  = "Demographics",
+  years    = 2024
+)
+
+# Use a transformation:
+df_with_race <- brfss_pull(
+  concepts = c("ACEADNED", "race"),
+  years    = 2024
+)
+
+# Filter by tags (requires a concept_taxonomy.csv with tag columns):
+df_adults <- brfss_pull(
+  tags  = list(population = "adult"),
+  years = 2024
+)
+
+# Skip the auto-included demographics if you really want minimal output:
+df_minimal <- brfss_pull(
+  concepts          = "ACEADNED",
+  years             = 2024,
+  core_demographics = FALSE
+)
+```
+
+If a transformation depends on intermediate raw columns and you'd like
+to keep them in the output (for inspection, audit, or your own
+recoding), pass `keep_inputs = TRUE`.
+
+## 7. From here, your usual tidyverse workflow takes over
+
+`brfss_pull()` returns a tibble. Survey design columns are named
+`.weight`, `.strata`, and `.psu` so they don't collide with anything
+else and are easy to spot.
+
+From here, it's any tidyverse-compatible package: `dplyr` and `tidyr`
+for reshaping, `srvyr` or `survey` for weighted estimates, `ggplot2`
+for visualization, `gtsummary` for tables, whatever your analysis
+calls for.
+
+## Adapting for another state
+
+Step 3 is the only place this differs from Oregon. Instead of using
+the package's Oregon sample, supply your own state codebook:
+
+```r
+brfss_init_state(
+  state               = "WA",
+  state_codebook_path = "~/data/wa_brfss_codebook.csv"
+)
+```
+
+The state codebook is a CSV with at minimum the columns `year`,
+`raw_var_name`, and `label`. The package validates the schema and
+copies the file into your config dir.
+
+After that, `brfss_init_state()` creates an empty crosswalk and
+state_only file. Open the editor and start mapping variables —
+brfssTools will accumulate your work in the config dir over time, and
+nothing requires you to map all variables at once. Map the ACES
+variables today, ABC variables next month; partial crosswalks work
+just fine.
+
+## Troubleshooting
+
+**`No pool registered for dataset 'OR'`** — you skipped step 2, or your
+session restarted. Re-run `brfss_set_pool()`.
+
+**`brfssTools config dir not found`** — you skipped step 3. Run
+`brfss_init_state()`.
+
+**Editor won't launch / can't save** — make sure `shiny`, `DT`,
+`bslib`, and `htmltools` are installed:
+
+```r
+install.packages(c("shiny", "DT", "bslib", "htmltools"))
+```
+
+**`Reading categorical maps requires the 'yaml' package`** — install it:
+
+```r
+install.packages("yaml")
+```
+
+**Transformation produces all NAs** — the YAML's `inputs:` map probably
+references columns that don't exist for that year. Check
+`brfss_pool_status()` and look at the actual columns in that year's
+file (`brfssTools:::.peek_pool_file(path)`).

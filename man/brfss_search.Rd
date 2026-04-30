@@ -2,22 +2,35 @@
 % Please edit documentation in R/crosswalk.R
 \name{brfss_search}
 \alias{brfss_search}
-\title{Text-search the crosswalk}
+\title{Search the crosswalk and codebooks}
 \usage{
-brfss_search(cw, query, scope = c("all", "concept", "question", "raw_var"))
+brfss_search(
+  query,
+  scope = c("all", "concept", "variable", "label"),
+  path = NULL
+)
 }
 \arguments{
-\item{cw}{A loaded crosswalk object.}
+\item{query}{Search pattern (regex, case-insensitive).}
 
-\item{query}{Search pattern (regex). Case-insensitive.}
+\item{scope}{Where to search:
+\code{"all"} (default), \code{"concept"}, \code{"variable"}, or \code{"label"}.}
 
-\item{scope}{Where to search: \code{"all"} (default), \code{"concept"}, \code{"question"},
-or \code{"raw_var"}.}
+\item{path}{Optional config dir override.}
 }
 \value{
-A tibble of matching variables with the field where the match
-occurred.
+A tibble with columns: concept_id, year, state_var, cdc_var,
+matched_in, plus the matching label (from cdc_codebook or state_codebook).
 }
 \description{
-Text-search the crosswalk
+Case-insensitive regex search. Looks across concept IDs, state and CDC
+variable names, and labels (from the codebooks). Returns a tibble of
+matching rows with a \code{matched_in} column showing which field hit.
+}
+\examples{
+\dontrun{
+brfss_search("asthma")
+brfss_search("ACE", scope = "concept")
+brfss_search("CASTHNO", scope = "variable")
+}
 }

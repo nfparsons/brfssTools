@@ -1,0 +1,248 @@
+# brfssTools — Project Scratchpad
+
+_Last updated: 2026-04-30_
+
+## What this package does (in one sentence)
+
+A standardized framework for pulling, harmonizing, and analyzing BRFSS data
+across years and across CDC↔state surveys, with a hand-curated crosswalk
+and an interactive editor for maintaining it.
+
+## Architecture at a glance
+
+```{r}
+                  Package install                   User config dir
+                 (read-only, ships)         (writable, persists across upgrades)
+       ┌───────────────────────────────┐   ┌─────────────────────────────────┐
+       │ inst/extdata/                 │   │ tools::R_user_dir(              │
+       │ ├── cdc_codebook.csv          │   │   "brfssTools", "config")        │
+       │ ├── cdc_calculated_vars.csv   │   │ ├── crosswalk.csv               │
+       │ ├── cdc_only.csv              │   │ ├── state_codebook.csv          │
+       │ ├── taxonomy.csv              │   │ ├── state_only.csv              │
+       │ └── (sample OR data,          │   │ ├── pending.csv                 │
+       │      copied on init)          │   │ ├── config.yaml                 │
+       └───────────────────────────────┘   │ └── transformations/            │
+                                           │     ├── race.yaml               │
+                                           │     ├── race.R    (autogen)     │
+                                           │     └── ... user files ...      │
+                                           └─────────────────────────────────┘
+```
+
+`brfss_init_state("OR")` copies the package's shipped Oregon sample into
+the user's config dir. Other states pass `state_codebook_path = "..."` to
+seed an empty crosswalk against their codebook.
+
+Path resolution priority (used by `cw_load`, the editor, transformations):
+
+1. Explicit `path =` argument
+2. R option `brfssTools.config_path`
+3. Environment variable `BRFSSTOOLS_CONFIG_PATH`
+4. `tools::R_user_dir("brfssTools", "config")`
+5. Package's `inst/extdata/` (read-only fallback)
+
+## Crosswalk schema
+
+`crosswalk.csv` — one row per (concept, year, state_var, cdc_var):
+
+`concept_id, year, state_var, cdc_var, is_primary, source, score, notes`
+
+- `concept_id` — the Platonic ideal name. Used as the column name in
+  `brfss_pull()` output. Multiple state_vars across years can share a
+  `concept_id` (e.g., `ACEADNED1/2/3/4` all → `ACEADNED`).
+- `is_primary` — 1 for the canonical mapping per (year, state_var); 0
+  for secondary one-to-many mappings.
+
+Auxiliary files share the schema where applicable:
+
+- `state_only.csv` — `concept_id, year, state_var, source, notes`
+- `cdc_only.csv` — `concept_id, year, cdc_var, cdc_label, cdc_question,
+  source, research_finding`
+- `pending.csv` — undecided F_unmatched rows for later triage
+
+## What's been built
+
+### Done
+
+| Component | Status |
+|---|---|
+| Pass 1 crosswalk (CDC raw vars ↔ OR vars, 2012-2024) | ✓ 1,872 rows |
+| Concept-by-year pivot | ✓ 2,141 concepts |
+| Taxonomy (12 domains × 55 subdomains × 73 categories + 3 tag systems) | ✓ |
+| Static read-only HTML dashboard | ✓ |
+| `concept_id` schema + auto-population on load | ✓ |
+| Data-layer CRUD (cw_load, cw_save, cw_add_pair, etc.) | ✓ |
+| Bulk concept rename (`cw_rename_concept`) | ✓ |
+| Shiny editor — CDC-anchored heatmap + edit panel | ✓ |
+| Shiny editor — State-anchored mode toggle | ✓ |
+| Shiny editor — concept_id field + rename action | ✓ |
+| Hybrid path resolution (user-dir + project-local override) | ✓ |
+| `brfss_init_state()` for new users | ✓ |
+| State codebook validator (`brfss_validate_state_codebook`) | ✓ |
+| Transformation hooks: functional `.R` files | ✓ Stage 2 |
+| Transformation hooks: declarative YAML categorical maps | ✓ Stage 3a |
+| YAML → R code renderer for audit/docs | ✓ |
+
+### Not yet done
+
+| Component | Stage |
+|---|---|
+| Wire transformations (YAML + .R) into `brfss_pull()` | 3b |
+| Categorical-map GUI tab in the editor | 4 |
+| Pass 2 — CDC calculated vars crosswalk | backlog |
+| Update `R/pull.R` to use `concept_id` | backlog |
+| Race load-time calculator (now superseded by transformation hooks) | replaced |
+| 36 pending F_unmatched rows triage | backlog |
+| `year` → `vintage` rename in function args | backlog |
+| Collapse `brfss_download()` into `brfss_pool()` | backlog |
+| HAVHPAD 2012 → COPD pair verification | backlog |
+
+## User-facing functions (current)
+
+```{r}
+# Initialization
+brfss_init_state(state, state_codebook_path = NULL, path = NULL, overwrite = FALSE)
+brfss_config_path(path = NULL, must_exist = TRUE)
+sampled_states()
+brfss_validate_state_codebook(df, strict = FALSE)
+
+# Crosswalk CRUD (callable from console; also used by the editor)
+cw_load(path = NULL)
+cw_save(bundle, path = NULL)
+cw_add_pair(bundle, year, state_var, cdc_var, concept_id = NULL, ...)
+cw_remove_pair(bundle, year, state_var, cdc_var)
+cw_update_pair(bundle, year, state_var, cdc_var, concept_id = NULL, ...)
+cw_mark_state_only(bundle, year, state_var, concept_id = NULL, ...)
+cw_mark_cdc_only(bundle, year, cdc_var, concept_id = NULL, ...)
+cw_replace_cdc_partner(bundle, year, state_var, old_cdc_var, new_cdc_var, ...)
+cw_replace_state_partner(bundle, year, old_state_var, cdc_var, new_state_var, ...)
+cw_rename_concept(bundle, from, to)
+cw_recompute_concept_ids(bundle)
+
+# Editor
+brfss_crosswalk_editor(path = NULL, launch.browser = TRUE, port = NULL)
+
+# Transformations: functional (Stage 2)
+brfss_setup_transformation(name, template = NULL, path = NULL, edit = TRUE)
+brfss_setup_race(path = NULL, edit = TRUE)
+brfss_list_transformations(path = NULL)
+
+# Transformations: declarative YAML (Stage 3a)
+brfss_setup_categorical_map(name, template = NULL, path = NULL, edit = TRUE)
+brfss_setup_race_map(path = NULL, edit = TRUE)
+brfss_load_categorical_map(fp)
+brfss_render_transformation_code(name, path = NULL, save = FALSE)
+
+# Original package functions (preserved; not yet updated for new concept_id schema)
+brfss_pull(...)
+brfss_download(...)
+brfss_pool(...)
+brfss_inventory_pool(...)
+brfss_set_pool(...)
+brfss_crosswalk(...)
+brfss_crosswalk_audit(...)
+```
+
+## Decisions on file (so we don't relitigate)
+
+- **One state, one crosswalk.** No `crosswalks/{state}.csv` directory. If
+  multi-state ever happens, analysis functions take a `crosswalk =` arg.
+- **CDC is universal anchor.** Always.
+- **Variable names use `state_var` (generic), not `oha_var`.** Set up so a
+  WA analyst could replace the file content without renaming columns.
+- **`concept_id` is the unit of analysis.** R-friendly naming enforced.
+  Defaults: paired/cdc_only → `cdc_var`, state_only → `state_var`. User
+  edits override.
+- **Storage: hybrid user-dir.** Default is `tools::R_user_dir`, overridable
+  per-call with `path =`. Project-local for git-tracked work.
+- **Transformations: both supported.** Functional `.R` files and
+  declarative YAML categorical maps. `brfss_pull()` resolves YAML first.
+- **YAML dependency: Suggests, not Imports.** Graceful error if missing.
+- **Race: declarative YAML by default.** CDC-style spec, year-aware via
+  `by_year:` blocks. The functional `.R` is the escape hatch.
+- **Audit trail: git, not internal log.** No internal change log; the
+  user's clone of the config dir is just files in git.
+- **Backups: `.bak` rotation on every save** of crosswalk.csv.
+
+## Known frictions / open questions
+
+- `cw_save` writes to whatever path the bundle was loaded from. After
+  `brfss_init_state`, that's the user dir. If you want to publish your
+  Oregon work back to the package, you'd `cw_save(b, path = "...inst/extdata/")`
+  with the explicit path — but the safety check refuses package paths,
+  so we'd need a `package_dev = TRUE` flag for maintainers.
+- Stage 3b will need careful surgery on `R/pull.R`. The function should
+  detect when a requested name resolves to a transformation file vs. a
+  crosswalk concept_id, and pull the transformation's input variables
+  before applying it.
+- The transformation hot-reload model (re-source on every pull) is fast
+  during iteration but could be a perf issue on huge multi-year pulls.
+  Probably fine; flag if it becomes a problem.
+
+## How a new user gets started (the workflow we designed)
+
+```{r}
+install.packages("brfssTools")  # or pak::pak("nfparsons/brfssTools")
+library(brfssTools)
+
+# First-run init using the package's Oregon sample:
+brfss_init_state("OR")
+
+# Or for a fresh state with your own codebook:
+brfss_init_state(
+  state = "WA",
+  state_codebook_path = "~/data/wa_brfss_codebook.csv"
+)
+
+# Open the editor:
+brfss_crosswalk_editor()
+# Map variables in the GUI, hit save.
+
+# Set up a race transformation (CDC-style template):
+brfss_setup_race_map()
+# Edit the YAML, save.
+
+# (After Stage 3b lands:)
+df <- brfss_pull(
+  vars  = c("ACEADNED", "race", "AGE"),
+  years = 2019:2024
+)
+```
+
+## Next session pickup
+
+If this conversation ends and we resume in a new one, the resume point is:
+
+> **Stage 3b: wire transformations into `brfss_pull()`.**
+>
+> Need to (1) read the existing `R/pull.R` to understand its current contract,
+> (2) add resolution logic so a requested name like `"race"` is detected as
+> a transformation rather than a crosswalk concept_id, (3) pull the
+> transformation's input variables (parsing `inputs:` aliases for YAML or
+> the `.R` file's input metadata for functional), (4) apply the transformation
+> per-year after the data is loaded.
+>
+> Stage 4 (the categorical-map GUI tab) comes after.
+
+
+```{r scratchpad}
+devtools::document()
+devtools::load_all()
+
+brfss_list_transformations()
+# Should show the race.yaml and race.R you have in your config dir
+# (race.R as a separate row since it's a .R file in transformations/)
+```
+
+```{r}
+fp <- file.path(brfss_config_path(), "transformations", "race.yaml")
+spec <- brfss_load_categorical_map(fp)
+
+test_data <- tibble::tibble(
+  `_MRACE1`  = c(1, 2, 7, 99),
+  `_HISPANC` = c(2, 2, 2, 1)
+)
+result <- brfssTools:::.brfss_apply_categorical_map(test_data, spec, year = 2023)
+print(result)
+```
+
+

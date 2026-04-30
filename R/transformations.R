@@ -1,0 +1,344 @@
+# R/transformations.R
+#
+# Transformation hooks: user-defined R files that compute derived columns
+# at pull time. Each file in <config>/transformations/ is a standalone
+# definition: file name = output column name; the file defines a function
+# of (.data, year) -> tibble.
+#
+# Functional contract (NOT declarative): users write R code. brfss_pull()
+# sources the file fresh on every call, so iteration is just "edit, re-run".
+
+#' Open or create a transformation R file in the user's editor
+#'
+#' Transformation files live in `<config>/transformations/<name>.R`. The file
+#' must define a single function with signature `function(.data, year)` that
+#' returns a tibble with the new column added. The file name (without `.R`)
+#' becomes the column name `brfss_pull()` produces.
+#'
+#' If the file already exists, this opens it for editing. If not, this
+#' writes a starter template (parameterized by `template`) and opens that.
+#'
+#' @param name Character, the transformation name. Becomes the output column
+#'   name. Must be R-friendly (alphanumeric + underscore, no leading digit).
+#' @param template Optional name of a built-in template. Currently `"race"`
+#'   is supplied; everything else gets a generic stub.
+#' @param path Optional config path override.
+#' @param edit Logical. If TRUE (default in interactive sessions), opens the
+#'   file in the user's editor via `utils::file.edit()`. If FALSE, returns
+#'   the path silently.
+#' @return The transformation file path, invisibly.
+#' @export
+brfss_setup_transformation <- function(name,
+                                       template = NULL,
+                                       path = NULL,
+                                       edit = interactive()) {
+  if (missing(name) || !is.character(name) || length(name) != 1L ||
+      !nzchar(name)) {
+    stop("`name` is required and must be a single non-empty string.",
+         call. = FALSE)
+  }
+  if (!grepl("^[A-Za-z_][A-Za-z0-9_]*$", name)) {
+    stop("`name` must be R-friendly: start with letter/underscore, ",
+         "contain only letters/digits/underscores. Got: '", name, "'",
+         call. = FALSE)
+  }
+  if (nchar(name) > 63) {
+    stop("`name` must be 63 characters or fewer.", call. = FALSE)
+  }
+
+  cfg <- brfss_config_path(path, must_exist = FALSE)
+  trans_dir <- file.path(cfg, "transformations")
+  if (!dir.exists(trans_dir)) {
+    dir.create(trans_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  fp <- file.path(trans_dir, paste0(name, ".R"))
+
+  if (file.exists(fp)) {
+    msg <- sprintf("Transformation '%s' already exists. Opening for editing.", name)
+  } else {
+    body <- .brfss_transformation_template(name, template)
+    writeLines(body, fp)
+    msg <- sprintf("Created transformation '%s' at:\n  %s", name, fp)
+  }
+
+  message(msg)
+
+  if (edit) {
+    utils::file.edit(fp)
+  }
+
+  invisible(fp)
+}
+
+#' Open or create the race-calculator transformation
+#'
+#' Convenience wrapper around `brfss_setup_transformation("race", template = "race")`.
+#' The built-in template implements 5 OMB categories + Hispanic, with year-aware
+#' variable name resolution (because BRFSS race variables shift across years).
+#' Edit the resulting file to match your project's race definitions (REALD,
+#' collapsed, alone-vs-combined, etc.).
+#'
+#' @inheritParams brfss_setup_transformation
+#' @return The transformation file path, invisibly.
+#' @export
+brfss_setup_race <- function(path = NULL, edit = interactive()) {
+  brfss_setup_transformation("race", template = "race",
+                             path = path, edit = edit)
+}
+
+#' List user-defined transformations
+#'
+#' Walks `<config>/transformations/` and returns one row per transformation,
+#' classifying each as `"yaml"` (declarative categorical map), `"r"` (functional
+#' escape hatch), or `"r_autogen"` (auto-generated companion to a YAML;
+#' read-only documentation).
+#'
+#' @param path Optional config path override.
+#' @return Tibble with columns `name`, `kind`, `path`, `mtime`.
+#' @export
+brfss_list_transformations <- function(path = NULL) {
+  cfg <- brfss_config_path(path, must_exist = FALSE)
+  trans_dir <- file.path(cfg, "transformations")
+  if (!dir.exists(trans_dir)) {
+    return(tibble::tibble(name = character(), kind = character(),
+                          path = character(),
+                          mtime = as.POSIXct(character())))
+  }
+  files <- list.files(trans_dir, pattern = "\\.(R|yaml|yml)$",
+                      full.names = TRUE, ignore.case = TRUE)
+  if (length(files) == 0L) {
+    return(tibble::tibble(name = character(), kind = character(),
+                          path = character(),
+                          mtime = as.POSIXct(character())))
+  }
+
+  classify <- function(fp) {
+    if (grepl("\\.ya?ml$", fp, ignore.case = TRUE)) return("yaml")
+    if (.is_autogen_r_companion(fp)) return("r_autogen")
+    "r"
+  }
+
+  tibble::tibble(
+    name  = sub("\\.(R|yaml|yml)$", "", basename(files), ignore.case = TRUE),
+    kind  = vapply(files, classify, character(1)),
+    path  = files,
+    mtime = file.info(files)$mtime
+  )
+}
+
+# Detect that a .R file is auto-generated by brfss_render_transformation_code.
+.is_autogen_r_companion <- function(fp) {
+  if (!file.exists(fp)) return(FALSE)
+  head_lines <- readLines(fp, n = 6, warn = FALSE)
+  any(grepl("AUTO-GENERATED from the corresponding .yaml",
+            head_lines, fixed = TRUE))
+}
+
+# ============================================================================
+# Internals: load and apply transformations
+# ============================================================================
+
+# Source a transformation file in a fresh environment. Returns the function
+# the file exposes. The file is required to either:
+#   (a) end with an expression that evaluates to a function (most natural), or
+#   (b) define a function named `transform_<name>` or `<name>` and have it be
+#       the last symbol assigned in the file.
+.brfss_load_transformation <- function(fp, name) {
+  if (!file.exists(fp)) {
+    stop("Transformation file not found: ", fp, call. = FALSE)
+  }
+
+  env <- new.env(parent = globalenv())
+  ok <- tryCatch({
+    source(fp, local = env, keep.source = TRUE)
+    TRUE
+  }, error = function(e) {
+    stop("Error sourcing transformation '", name, "' from ", fp, ":\n  ",
+         conditionMessage(e), call. = FALSE)
+  })
+
+  # Look for a function: try transform_<name>, then <name>, then any function
+  # in the env. Prefer named matches.
+  candidates <- c(paste0("transform_", name), name)
+  fn <- NULL
+  for (cand in candidates) {
+    if (exists(cand, envir = env, inherits = FALSE) &&
+        is.function(get(cand, envir = env))) {
+      fn <- get(cand, envir = env)
+      break
+    }
+  }
+  if (is.null(fn)) {
+    # Fall back: take the last function defined
+    syms <- ls(env, sorted = FALSE)
+    fns <- syms[vapply(syms, function(s) is.function(get(s, envir = env)),
+                       logical(1))]
+    if (length(fns) >= 1L) fn <- get(fns[length(fns)], envir = env)
+  }
+  if (is.null(fn)) {
+    stop("Transformation '", name, "' does not define a function. ",
+         "The file must define a function named `", name, "` or `transform_",
+         name, "`, or end with a function expression.", call. = FALSE)
+  }
+
+  # Validate signature
+  fmls <- formals(fn)
+  if (!all(c(".data", "year") %in% names(fmls))) {
+    stop("Transformation '", name, "' must have signature ",
+         "function(.data, year). Found: function(",
+         paste(names(fmls), collapse = ", "), ")",
+         call. = FALSE)
+  }
+
+  fn
+}
+
+# Apply a transformation to a per-year data frame. Wraps in tryCatch so a
+# bad transform produces a clear message rather than an opaque crash.
+.brfss_apply_transformation <- function(.data, name, year, fn) {
+  result <- tryCatch(
+    fn(.data = .data, year = year),
+    error = function(e) {
+      stop("Transformation '", name, "' failed for year ", year, ":\n  ",
+           conditionMessage(e), call. = FALSE)
+    }
+  )
+  if (!is.data.frame(result)) {
+    stop("Transformation '", name, "' did not return a data.frame. ",
+         "Got class: ", paste(class(result), collapse = "/"),
+         call. = FALSE)
+  }
+  if (!name %in% names(result)) {
+    stop("Transformation '", name, "' returned a data.frame without a '",
+         name, "' column. The output column must match the file name.",
+         call. = FALSE)
+  }
+  result
+}
+
+# ============================================================================
+# Templates
+# ============================================================================
+
+.brfss_transformation_template <- function(name, template = NULL) {
+  if (!is.null(template) && template == "race") {
+    return(.template_race(name))
+  }
+  .template_generic(name)
+}
+
+.template_generic <- function(name) {
+  c(
+    sprintf("# transformations/%s.R", name),
+    "#",
+    "# Transformation function for brfss_pull()",
+    "#",
+    "# Contract:",
+    "#   - Input:  .data (a tibble for one year), year (integer)",
+    sprintf("#   - Output: same tibble with a new column named '%s'", name),
+    "#",
+    "# This file is sourced fresh on every brfss_pull() call. Edit and re-run.",
+    "",
+    "library(dplyr)",
+    "",
+    sprintf("%s <- function(.data, year) {", name),
+    "  # TODO: implement your transformation here.",
+    "  # Example: build a categorical from raw BRFSS variables, possibly",
+    "  # branching on `year` because variable names change over time.",
+    "  #",
+    "  # Replace this stub with your real logic:",
+    sprintf("  .data %%>%% mutate(%s = NA_character_)", name),
+    "}",
+    ""
+  )
+}
+
+.template_race <- function(name) {
+  c(
+    "# transformations/race.R",
+    "#",
+    "# Build a single 'race' column from the state's BRFSS race variables.",
+    "#",
+    "# DEFAULT IMPLEMENTATION: 5 OMB single-race-alone, Non-Hispanic categories",
+    "# plus a Hispanic-anyrace category. Adapt to your project's needs (REALD,",
+    "# alone-or-in-combination, expanded categories, etc.).",
+    "#",
+    "# Year-aware: BRFSS variable names for race shift across years. The CDC",
+    "# canonical variables are typically MRACE, MRACE1 (multi-race indicator)",
+    "# and HISPANC2/HISPANC3 (Hispanic indicator). Your state's codebook may",
+    "# differ; consult your state_codebook.csv for the right names.",
+    "#",
+    "# Returned values (default):",
+    "#   'Hispanic'                 -- any race + Hispanic ethnicity",
+    "#   'White, NH'                -- White alone, non-Hispanic",
+    "#   'Black, NH'                -- Black alone, non-Hispanic",
+    "#   'AIAN, NH'                 -- American Indian / Alaska Native alone, NH",
+    "#   'Asian, NH'                -- Asian alone, NH",
+    "#   'NHPI, NH'                 -- Native Hawaiian / Pacific Islander alone, NH",
+    "#   'Multiracial, NH'          -- Two or more races, non-Hispanic",
+    "#   NA                         -- Refused, missing, or don't know",
+    "",
+    "library(dplyr)",
+    "",
+    "race <- function(.data, year) {",
+    "  # ----- 1. Resolve which raw variables to use for THIS year. -----",
+    "  # CDC's variable names for these are stable through 2012-2024:",
+    "  #   _MRACE1 / _IMPRACE  -- imputed multi-race",
+    "  #   _HISPANC / _PRACE1  -- ethnicity",
+    "  # State codebooks vary. Check your state_codebook.csv for the year",
+    "  # in question and update the if-else logic below as needed.",
+    "  #",
+    "  # If a needed variable is absent, return NA_character_ for race.",
+    "",
+    "  cols <- names(.data)",
+    "",
+    "  # Hispanic indicator: prefer CDC computed _HISPANC if present.",
+    "  hisp_var <- if      ('_HISPANC' %in% cols) '_HISPANC'",
+    "              else if ('HISPANC3' %in% cols) 'HISPANC3'",
+    "              else if ('HISPANC2' %in% cols) 'HISPANC2'",
+    "              else NA_character_",
+    "",
+    "  # Multi-race / single-race coded indicator.",
+    "  race_var <- if      ('_IMPRACE' %in% cols) '_IMPRACE'",
+    "              else if ('_MRACE1'  %in% cols) '_MRACE1'",
+    "              else if ('_PRACE1'  %in% cols) '_PRACE1'",
+    "              else NA_character_",
+    "",
+    "  if (is.na(hisp_var) || is.na(race_var)) {",
+    "    return(.data %>% mutate(race = NA_character_))",
+    "  }",
+    "",
+    "  # ----- 2. Apply the categorization. -----",
+    "  # _IMPRACE coding (CDC, stable across years):",
+    "  #   1 = White only, NH",
+    "  #   2 = Black only, NH",
+    "  #   3 = Asian only, NH",
+    "  #   4 = AIAN only, NH",
+    "  #   5 = Hispanic",
+    "  #   6 = Other race only, NH",
+    "  # _MRACE1 coding has more buckets (8/9 = multiracial).",
+    "  # Adjust the case_when() rules below for the variable you're using.",
+    "",
+    "  hisp <- .data[[hisp_var]]",
+    "  rc   <- .data[[race_var]]",
+    "",
+    "  .data %>%",
+    "    mutate(",
+    "      race = case_when(",
+    "        # Hispanic gets its own bucket regardless of race code",
+    "        hisp == 1                       ~ 'Hispanic',",
+    "        rc   == 1                       ~ 'White, NH',",
+    "        rc   == 2                       ~ 'Black, NH',",
+    "        rc   == 3                       ~ 'Asian, NH',",
+    "        rc   == 4                       ~ 'AIAN, NH',",
+    "        rc   == 5                       ~ 'NHPI, NH',",
+    "        rc   %in% c(6, 7)               ~ 'Other, NH',",
+    "        rc   %in% c(8, 9)               ~ 'Multiracial, NH',",
+    "        TRUE                            ~ NA_character_",
+    "      )",
+    "    )",
+    "}",
+    ""
+  )
+}

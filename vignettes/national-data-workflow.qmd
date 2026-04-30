@@ -1,0 +1,265 @@
+---
+title: "Workflow: National BRFSS data"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+---
+
+```{r}
+#| include: false
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  eval     = FALSE
+)
+```
+
+This vignette walks an analyst working with CDC's national BRFSS data
+through the brfssTools workflow, from a fresh install to a tidy tibble
+ready for analysis. It assumes you don't have state-collected files of
+your own — just CDC's public LLCP files.
+
+The code chunks are not executed when this vignette is built; they're
+documentation of the workflow against your real data on your real
+machine.
+
+## 1. Install the package
+
+```r
+install.packages("brfssTools")
+
+# Or from a fork / development source:
+# pak::pak("nfparsons/brfssTools")
+```
+
+A fresh install ships with the CDC codebook, taxonomy, and a sample
+crosswalk. Everything else lives in your user config directory (see
+step 3) where it persists across package upgrades.
+
+## 2. Download CDC's national BRFSS data
+
+The package can fetch the public LLCP files directly from CDC's
+website:
+
+```r
+library(brfssTools)
+
+brfss_download(2019:2024)
+#> Downloading BRFSS 2019 from CDC...
+#>   -> C:/Users/.../AppData/Local/R/cache/R/brfssTools/LLCP2019.XPT
+#> Downloading BRFSS 2020 from CDC...
+#>   -> C:/Users/.../AppData/Local/R/cache/R/brfssTools/LLCP2020.XPT
+#> ...
+#> Scanning pool for dataset 'National'...
+#> Indexed 6 file(s) for dataset 'National'.
+```
+
+Two things happen:
+
+1. Each year's `LLCP{YYYY}XPT.ZIP` is downloaded into the package's
+   cache directory and the XPT extracted.
+2. The cache is automatically registered as the `"National"` pool, so
+   `brfss_pull()` can immediately find the files.
+
+You can re-run `brfss_download()` later with additional years; already-
+present files won't re-download unless you pass `overwrite = TRUE`.
+
+Only years 2011 and later are supported — CDC's 2011 weighting change
+(raking + cell phone frame) makes earlier files non-comparable.
+
+To see what's currently registered:
+
+```r
+brfss_pool_status()
+#> # A tibble: 6 x 3
+#>    dataset   year  file
+#>    <chr>    <int>  <chr>
+#>  1 National  2019  C:/.../cache/R/brfssTools/LLCP2019.XPT
+#>  2 National  2020  C:/.../cache/R/brfssTools/LLCP2020.XPT
+#>  ...
+```
+
+The cache lives at `brfss_cache_dir()` — you can clean it up by hand
+if disk space is an issue, or use `brfss_clear_pool("National")` to
+deregister without deleting files.
+
+## 3. Initialize a config
+
+The package keeps a *config directory* that stores per-user crosswalks
+and transformations. This is separate from the cache (which holds raw
+data files). The config persists across R sessions and package
+upgrades.
+
+For National-only workflows, you can use the package's shipped Oregon
+crosswalk as a starting point — most CDC core variables map to the
+same column names, so the crosswalk is largely usable as-is for
+National data:
+
+```r
+brfss_init_state("OR")
+#> Initialized config for sample state 'OR' from package data.
+#> Config dir: C:/Users/.../AppData/Roaming/R/config/R/brfssTools
+```
+
+If you'd rather keep config in a project folder (so it can be
+git-tracked alongside an analysis), pass an explicit path:
+
+```r
+brfss_init_state("OR", path = "C:/projects/aces-paper/brfss_config")
+```
+
+## 4. Tour the crosswalk editor (optional)
+
+The crosswalk is a CSV file you can edit by hand, but the GUI editor
+is faster for exploration. It launches a local Shiny app:
+
+```r
+brfss_crosswalk_editor()
+```
+
+The editor shows every concept × year as a heatmap. Clicking a row
+opens the edit panel on the right, where you can:
+
+* See the CDC labels for the variable
+* Edit the `concept_id` (the unified name brfss_pull uses)
+* Click **Rename concept everywhere** to bulk-rename across all years
+
+For a National-only workflow you'll mostly *read* the crosswalk rather
+than edit it — the CDC variable names are the system of record.
+
+## 5. Set up a transformation (race example)
+
+Some variables don't map cleanly to a single column. Race is the
+canonical example, since it's typically computed from `_MRACE1` and
+`_HISPANC` using project-specific category definitions.
+
+brfssTools handles these via *transformations*: small declarative
+YAML files. Set up the race transformation with the CDC-style template:
+
+```r
+brfss_setup_race_map()
+#> Created categorical map 'race' at:
+#>   C:/.../config/R/brfssTools/transformations/race.yaml
+```
+
+The YAML opens in your editor. The default template implements CDC's
+`_RACE` calculated variable (7 NH single-race + Hispanic + don't-know).
+Edit it to match your project's category definitions if you need
+something different.
+
+When you save, the transformation is immediately available to
+`brfss_pull()` as a column called `race`.
+
+## 6. Pull data
+
+Now you're ready for the main event:
+
+```r
+df <- brfss_pull(
+  concepts = c("ACEADNED", "GENHLTH"),
+  years    = 2022:2023,
+  source   = "cdc"
+)
+#> # A tibble: ~880,000 x 8
+#>     year SEQNO   `_STATE` ACEADNED GENHLTH AGE   SEX   race
+#>    <int> <chr>     <chr>    <chr>    <chr> <chr> <chr> <chr>
+#>  ...
+```
+
+A few things to notice:
+
+* `source = "cdc"` is required for National data. The default auto-
+  detects: if a state pool is registered it picks state, otherwise CDC.
+  So if you ONLY have the National pool registered, you can omit this.
+* `AGE` and `SEX` showed up automatically because
+  `core_demographics = TRUE` is the default.
+* `race` is computed via the YAML transformation you set up in step 5.
+* `_STATE` is a FIPS code; useful for downstream state-level grouping.
+
+For National data you'll usually want to filter to specific states:
+
+```r
+df_pnw <- brfss_pull(
+  concepts = c("ACEADNED", "GENHLTH"),
+  states   = c("OR", "WA", "ID"),
+  years    = 2022:2023,
+  source   = "cdc"
+)
+```
+
+The `states` argument accepts USPS codes (like `"OR"`, `"WA"`) or FIPS
+integers (`c(41L, 53L)`).
+
+Other useful patterns:
+
+```r
+# Pull every concept in a domain:
+df_bh <- brfss_pull(
+  domains = "Behavioral Health",
+  years   = 2022:2023,
+  source  = "cdc"
+)
+
+# Combine concepts and a domain:
+df_combined <- brfss_pull(
+  concepts = c("AGE", "ACEADNED"),
+  domains  = "Demographics",
+  years    = 2023,
+  source   = "cdc"
+)
+
+# Long-format output (one row per respondent x concept):
+df_long <- brfss_pull(
+  concepts = c("ACEADNED", "GENHLTH"),
+  years    = 2022:2023,
+  source   = "cdc",
+  output   = "long"
+)
+
+# Skip the auto-included demographics:
+df_minimal <- brfss_pull(
+  concepts          = "ACEADNED",
+  years             = 2023,
+  source            = "cdc",
+  core_demographics = FALSE
+)
+```
+
+## 7. From here, your usual tidyverse workflow takes over
+
+`brfss_pull()` returns a tibble. Survey design columns are named
+`.weight`, `.strata`, and `.psu` (these come from CDC's `_LLCPWT`,
+`_STSTR`, and `_PSU`). For National BRFSS data, all three are needed
+to compute correct standard errors.
+
+From here, it's any tidyverse-compatible package: `dplyr` and `tidyr`
+for reshaping, `srvyr` or `survey` for weighted estimates, `ggplot2`
+for visualization, `gtsummary` for tables.
+
+## Troubleshooting
+
+**`No pool registered for dataset 'National'`** — you skipped step 2,
+or your R session restarted. Re-run `brfss_download()`.
+
+**`brfssTools config dir not found`** — you skipped step 3. Run
+`brfss_init_state("OR")`.
+
+**Download fails with HTTP error** — CDC's URL format is fixed at
+`https://www.cdc.gov/brfss/annual_data/{YYYY}/files/LLCP{YYYY}XPT.ZIP`.
+Check whether you can access that URL in a browser. Corporate
+proxies sometimes block large XPT downloads; try using a personal
+network or pre-download the files manually and use
+`brfss_set_pool("National", path)` instead.
+
+**Editor won't launch** — make sure Shiny and friends are installed:
+
+```r
+install.packages(c("shiny", "DT", "bslib", "htmltools"))
+```
+
+**`Reading categorical maps requires the 'yaml' package`** — install it:
+
+```r
+install.packages("yaml")
+```

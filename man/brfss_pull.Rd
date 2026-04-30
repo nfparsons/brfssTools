@@ -2,95 +2,57 @@
 % Please edit documentation in R/pull.R
 \name{brfss_pull}
 \alias{brfss_pull}
-\title{Pull one or more concepts from a registered dataset}
+\title{Pull harmonized BRFSS data}
 \usage{
 brfss_pull(
-  cw,
-  concept_ids,
-  dataset,
+  concepts = NULL,
+  domains = NULL,
+  tags = NULL,
   years = NULL,
   states = NULL,
-  data = NULL,
-  id_cols = "SEQNO",
-  with_design = TRUE,
-  harmonize = TRUE,
-  keep_raw = FALSE,
-  output = c("long", "wide")
+  source = NULL,
+  core_demographics = TRUE,
+  keep_inputs = FALSE,
+  output = c("wide", "long"),
+  path = NULL
 )
 }
 \arguments{
-\item{cw}{A loaded crosswalk (from \code{\link[=brfss_crosswalk]{brfss_crosswalk()}}).}
+\item{concepts}{Character vector of concept IDs and/or transformation names.}
 
-\item{concept_ids}{Character vector of concept IDs to pull.}
+\item{domains}{Character vector of domain names.}
 
-\item{dataset}{Single string. The dataset to pull from
-(e.g., \code{"National"}, \code{"OR"}). Must match a registered pool — see
-\code{\link[=brfss_set_pool]{brfss_set_pool()}} or \code{\link[=brfss_download]{brfss_download()}}.}
+\item{tags}{Named list of tag filters.}
 
-\item{years}{Optional integer vector restricting which years are pulled.
-Defaults to all years available in both the crosswalk and the pool.}
+\item{years}{Integer vector. Default: all years in the crosswalk.}
 
-\item{states}{Optional vector of FIPS codes (integer) or USPS abbreviations
-(character) to filter the data to. Most useful when
-\code{dataset = "National"}. Ignored if no \verb{_STATE} column exists.}
+\item{states}{Character (USPS) or numeric (FIPS); for \code{source = "cdc"}.}
 
-\item{data}{Optional named list of in-memory data frames keyed by
-\code{"<dataset>_<year>"} (e.g., \code{"OR_2022"}). When supplied, this list is
-the sole source of data - the registered pool is not consulted, even
-for years not present in the list (those years are simply skipped).
-Primarily useful for testing.}
+\item{source}{\code{"state"} or \code{"cdc"}. Auto-detects from registered pools.}
 
-\item{id_cols}{Character vector of column names to preserve from the
-raw file. Defaults to \code{"SEQNO"}. Columns that don't exist in the
-raw file are silently skipped.}
+\item{core_demographics}{If TRUE (default), include AGE, SEX, race
+(if user has a transformation), and survey design columns.}
 
-\item{with_design}{If \code{TRUE} (default), automatically appends the
-survey-design concepts \code{"survey_weight"}, \code{"psu"}, and \code{"strata"} to
-the requested \code{concept_ids}, but only those that actually exist in
-the crosswalk. This makes pull results survey-ready by default and
-composes naturally with \code{\link[=brfss_as_svy]{brfss_as_svy()}}. Set \code{FALSE} if you really
-want to skip them.}
+\item{keep_inputs}{If FALSE (default), drops intermediate raw columns.}
 
-\item{harmonize}{If \code{TRUE} (default), apply recode rules.}
+\item{output}{\code{"wide"} (default) or \code{"long"}.}
 
-\item{keep_raw}{If \code{TRUE}, keep the raw value alongside the harmonized one.}
-
-\item{output}{\code{"long"} (default) or \code{"wide"}.}
+\item{path}{Optional config dir override.}
 }
 \value{
 A tibble.
 }
 \description{
-The workhorse. Looks up the requested concepts in the master crosswalk,
-fetches the matching yearly files from the dataset's pool, applies the
-recode rules, and returns a tidy tibble.
-
-For \code{dataset = "National"}, only rules tagged \code{source == "core"} are
-applied. For state datasets like \code{dataset = "OR"}, both \code{"core"} and the
-state's own rules (\code{"OR"}) are applied — so state-added items show up
-alongside the LLCP core.
+Resolves a request into raw column lookups and transformation calls,
+then loads, harmonizes, and returns the data.
 }
-\examples{
-\dontrun{
-brfss_set_pool("OR", "Z:/secure/oregon_brfss")
-cw <- brfss_crosswalk(dataset = "OR", years = 2018:2023)
-# Design vars (survey_weight, psu, strata) auto-included
-or_data <- brfss_pull(cw, c("ASTHNOW", "GENHLTH"),
-                      dataset = "OR",
-                      output  = "wide")
-
-# Hand off to srvyr in one call
-or_svy <- brfss_as_svy(or_data)
-
-# National example with state filter
-brfss_download(2022:2023)
-cw_us <- brfss_crosswalk(dataset = "National")
-brfss_pull(cw_us, c("ASTHNOW", "GENHLTH"),
-           dataset = "National",
-           states  = c("OR", "WA", "ID"))
+\details{
+Three ways to specify what you want, all of which can combine (results
+are the union):
+\describe{
+\item{\code{concepts}}{Vector of concept IDs and/or transformation names.}
+\item{\code{domains}}{Vector of domain names from the taxonomy.}
+\item{\code{tags}}{Named list of tag filters,
+e.g., \code{list(population = "adult")}.}
 }
-}
-\seealso{
-\code{\link[=brfss_as_svy]{brfss_as_svy()}} to convert a wide pull result into a \code{srvyr}
-survey design.
 }

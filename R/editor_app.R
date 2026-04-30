@@ -31,17 +31,48 @@ brfss_crosswalk_editor <- function(path = NULL,
     }
   }
 
+  # Locate the bundled Shiny app. system.file() works when installed; falls
+  # back to looking under the loaded package's source directory when running
+  # via devtools::load_all().
   app_dir <- system.file("shiny", "editor", package = "brfssTools")
   if (!nzchar(app_dir) || !dir.exists(app_dir)) {
-    stop("Editor app missing. Reinstall brfssTools.", call. = FALSE)
+    # devtools::load_all leaves a 'package:brfssTools' attached but doesn't
+    # populate the install dir. find.package() returns the source dir.
+    pkg_root <- tryCatch(find.package("brfssTools"), error = function(e) NULL)
+    if (!is.null(pkg_root)) {
+      candidate <- file.path(pkg_root, "inst", "shiny", "editor")
+      if (dir.exists(candidate)) app_dir <- candidate
+    }
+  }
+  if (!nzchar(app_dir) || !dir.exists(app_dir)) {
+    stop("Editor app missing. Reinstall brfssTools, or check that ",
+         "inst/shiny/editor/ exists in the source tree.", call. = FALSE)
   }
 
   # Pass the path through an environment variable that the Shiny app reads
   # at startup. (Alternatives like assigning to a package-internal env are
   # fragile across Shiny's evaluation contexts.)
-  if (is.null(path)) path <- system.file("extdata", package = "brfssTools")
+  # Resolve the config path: explicit > option > env > R_user_dir > package.
+  # If we end up at the package extdata fallback, the editor opens read-only —
+  # we can browse but not save. Saves error with a clear message via cw_save().
+  if (is.null(path)) {
+    path <- tryCatch(
+      brfssTools:::`.cw_default_path`(),
+      error = function(e) NULL
+    )
+  }
+  if (is.null(path) || !nzchar(path) || !dir.exists(path)) {
+    stop(
+      "No brfssTools config found.\n",
+      "Run brfss_init_state(state = ..., state_codebook_path = ...) first, ",
+      "or pass an explicit `path =` argument.",
+      call. = FALSE
+    )
+  }
   Sys.setenv(BRFSSTOOLS_EDITOR_PATH = path)
-  on.exit(Sys.unsetenv("BRFSSTOOLS_EDITOR_PATH"), add = TRUE)
+  # Note: do NOT unset on.exit. shiny::runApp() returns when the browser
+  # opens, but the server function reads the env var lazily on each session.
+  # Unsetting here would break the server's bundle load.
 
   shiny::runApp(
     appDir = app_dir,

@@ -2,18 +2,21 @@
 % Please edit documentation in R/crosswalk.R
 \name{brfss_lookup}
 \alias{brfss_lookup}
-\title{Pull the full crosswalk for one or more concepts}
+\title{Look up the full crosswalk for one or more concepts}
 \usage{
-brfss_lookup(cw, concept_id)
+brfss_lookup(concept_ids, path = NULL)
 }
 \arguments{
-\item{cw}{A loaded crosswalk object.}
+\item{concept_ids}{Character vector of concept IDs.}
 
-\item{concept_id}{Character vector of concept IDs.}
+\item{path}{Optional config dir override.}
 }
 \value{
-A tibble mapping the concept(s) to all relevant years and sources.
+A tibble with columns:
+concept_id, year, state_var, cdc_var, is_primary, source, score, notes,
+state_label, cdc_label.
 }
 \description{
-Pull the full crosswalk for one or more concepts
+Returns every (year, state_var, cdc_var) row mapped to the requested
+concept(s), joined with labels from both codebooks.
 }

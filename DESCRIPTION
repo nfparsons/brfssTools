@@ -24,7 +24,8 @@ Suggests:
     shiny,
     DT,
     bslib,
-    htmltools
+    htmltools,
+    yaml
 VignetteBuilder: knitr
 Imports: 
     dplyr,
