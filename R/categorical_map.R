@@ -97,22 +97,30 @@ brfss_setup_race_map <- function(path = NULL, edit = interactive()) {
 # Public: load, validate, render
 # ============================================================================
 
-#' Load and validate a categorical-map YAML
+#' Load and validate a transformation YAML
 #'
-#' Returns a parsed list with the `levels` normalized for runtime use.
-#' Errors verbosely if the YAML is malformed or missing required fields.
+#' Generic loader that reads any transformation YAML and dispatches based
+#' on the `type:` field. Currently supported types:
+#' \describe{
+#'   \item{`categorical_map`}{Ordered list of `(value, label, when)` rules;
+#'     first match wins. The classic categorical recode.}
+#'   \item{`passthrough`}{Renames a single raw input column to the output
+#'     column name. No recoding. Year-aware aliasing supported via
+#'     `inputs:` and `by_year:` blocks.}
+#' }
 #'
 #' @param fp Path to the YAML file.
 #' @return A list with `output_column`, `type`, `description`, `inputs`,
-#'   `levels` (normalized), and `by_year` (if present).
+#'   plus type-specific fields (`levels` for categorical_map; `input` for
+#'   passthrough).
 #' @export
-brfss_load_categorical_map <- function(fp) {
+brfss_load_transformation_spec <- function(fp) {
   if (!file.exists(fp)) {
-    stop("Categorical map file not found: ", fp, call. = FALSE)
+    stop("Transformation file not found: ", fp, call. = FALSE)
   }
   if (!requireNamespace("yaml", quietly = TRUE)) {
     stop(
-      "Reading categorical maps requires the 'yaml' package. ",
+      "Reading transformations requires the 'yaml' package. ",
       "Install with: install.packages(\"yaml\")",
       call. = FALSE
     )
@@ -125,40 +133,96 @@ brfss_load_categorical_map <- function(fp) {
     }
   )
 
-  # Required fields
   if (is.null(spec$output_column) || !nzchar(spec$output_column)) {
-    stop("Categorical map at ", fp, " missing required `output_column`.",
+    stop("Transformation at ", fp, " missing required `output_column`.",
          call. = FALSE)
   }
-  if (is.null(spec$type) || spec$type != "categorical_map") {
-    stop("Categorical map at ", fp,
-         " must have type: categorical_map. Found: ",
-         spec$type %||% "<missing>", call. = FALSE)
-  }
-  if (is.null(spec$levels) || !is.list(spec$levels) || length(spec$levels) == 0L) {
-    stop("Categorical map at ", fp, " must define at least one level.",
+  if (is.null(spec$type) || !nzchar(spec$type)) {
+    stop("Transformation at ", fp, " missing required `type`.",
          call. = FALSE)
   }
 
-  # File basename should match output_column
   expected_name <- sub("\\.ya?ml$", "", basename(fp))
   if (!identical(expected_name, spec$output_column)) {
     warning(sprintf(
-      "Categorical map filename '%s' does not match output_column '%s'. ",
+      "Transformation filename '%s' does not match output_column '%s'. ",
       expected_name, spec$output_column),
-      "brfss_pull() resolves transformations by filename, so this map will ",
+      "brfss_pull() resolves transformations by filename, so this will ",
       "be loaded as '%s'.", expected_name,
       call. = FALSE)
   }
 
-  # Normalize levels
-  spec$levels <- lapply(seq_along(spec$levels), function(i) {
-    lvl <- spec$levels[[i]]
+  # Type-specific validation
+  switch(
+    spec$type,
+    "categorical_map" = .validate_categorical_map(spec, fp),
+    "passthrough"     = .validate_passthrough(spec, fp),
+    stop("Unknown transformation type at ", fp, ": '", spec$type, "'. ",
+         "Supported: categorical_map, passthrough.", call. = FALSE)
+  )
+}
+
+# Backward-compat alias — older code still calls brfss_load_categorical_map.
+#' @rdname brfss_load_transformation_spec
+#' @export
+brfss_load_categorical_map <- function(fp) {
+  spec <- brfss_load_transformation_spec(fp)
+  if (spec$type != "categorical_map") {
+    stop("File at ", fp, " is type '", spec$type,
+         "', not categorical_map. ",
+         "Use brfss_load_transformation_spec() for type-agnostic loading.",
+         call. = FALSE)
+  }
+  spec
+}
+
+# ----- Type-specific validators -----
+
+.validate_categorical_map <- function(spec, fp) {
+  has_top_levels <- !is.null(spec$levels) && is.list(spec$levels) &&
+                     length(spec$levels) > 0L
+  has_year_levels <- !is.null(spec$by_year) && length(spec$by_year) > 0L &&
+                      any(vapply(spec$by_year, function(blk) {
+                        !is.null(blk$levels) && length(blk$levels) > 0L
+                      }, logical(1L)))
+
+  if (!has_top_levels && !has_year_levels) {
+    stop("categorical_map at ", fp,
+         " must define at least one level (either at top-level `levels:` ",
+         "or in a `by_year:` block).", call. = FALSE)
+  }
+
+  # Normalize and validate top-level levels (if any)
+  if (has_top_levels) {
+    spec$levels <- .validate_levels_block(spec$levels, fp, "top-level")
+  }
+
+  # Normalize and validate any by_year levels blocks
+  if (!is.null(spec$by_year) && length(spec$by_year) > 0L) {
+    for (key in names(spec$by_year)) {
+      blk <- spec$by_year[[key]]
+      if (!is.null(blk$levels) && length(blk$levels) > 0L) {
+        spec$by_year[[key]]$levels <- .validate_levels_block(
+          blk$levels, fp, sprintf("by_year['%s']", key)
+        )
+      }
+    }
+  }
+
+  spec$inputs <- spec$inputs %||% list()
+  spec
+}
+
+# Validate a list of level definitions; return normalized list.
+.validate_levels_block <- function(levels, fp, ctx) {
+  out <- lapply(seq_along(levels), function(i) {
+    lvl <- levels[[i]]
     if (is.null(lvl$value)) {
-      stop("Level #", i, " in ", fp, " missing `value`.", call. = FALSE)
+      stop("Level #", i, " in ", ctx, " of ", fp, " missing `value`.",
+           call. = FALSE)
     }
     if (is.null(lvl$when) || !nzchar(lvl$when)) {
-      stop("Level #", i, " (value=", lvl$value, ") in ", fp,
+      stop("Level #", i, " (value=", lvl$value, ") in ", ctx, " of ", fp,
            " missing `when` expression.", call. = FALSE)
     }
     list(
@@ -167,20 +231,27 @@ brfss_load_categorical_map <- function(fp) {
       when  = lvl$when
     )
   })
-
-  # Validate when expressions are parseable R
-  for (i in seq_along(spec$levels)) {
-    expr_str <- spec$levels[[i]]$when
-    parsed <- tryCatch(parse(text = expr_str),
-                       error = function(e) e)
+  for (i in seq_along(out)) {
+    expr_str <- out[[i]]$when
+    parsed <- tryCatch(parse(text = expr_str), error = function(e) e)
     if (inherits(parsed, "error")) {
-      stop("Level #", i, " (value=", spec$levels[[i]]$value, ") in ", fp,
-           " has unparseable `when` expression:\n  ", expr_str, "\n  Error: ",
-           conditionMessage(parsed), call. = FALSE)
+      stop("Level #", i, " (value=", out[[i]]$value, ") in ", ctx, " of ",
+           fp, " has unparseable `when` expression:\n  ", expr_str,
+           "\n  Error: ", conditionMessage(parsed), call. = FALSE)
     }
   }
+  out
+}
 
-  spec$inputs <- spec$inputs %||% list()
+.validate_passthrough <- function(spec, fp) {
+  if (is.null(spec$inputs) || length(spec$inputs) == 0L) {
+    stop("passthrough at ", fp, " requires `inputs:` with at least one ",
+         "alias \u2192 raw column mapping.", call. = FALSE)
+  }
+  if (length(spec$inputs) > 1L) {
+    warning("passthrough at ", fp, " has multiple inputs; only the first ",
+            "will be used.", call. = FALSE)
+  }
   spec
 }
 
@@ -212,8 +283,13 @@ brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
   if (!file.exists(fp_yaml)) {
     stop("No YAML transformation found at: ", fp_yaml, call. = FALSE)
   }
-  spec <- brfss_load_categorical_map(fp_yaml)
-  code <- .render_categorical_map_as_r(spec, name)
+  spec <- brfss_load_transformation_spec(fp_yaml)
+  code <- switch(
+    spec$type,
+    "categorical_map" = .render_categorical_map_as_r(spec, name),
+    "passthrough"     = .render_passthrough_as_r(spec, name),
+    stop("Unknown transformation type: '", spec$type, "'", call. = FALSE)
+  )
 
   if (save) {
     fp_r <- file.path(cfg, "transformations", paste0(name, ".R"))
@@ -229,11 +305,53 @@ brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
 # Internal: runtime evaluator
 # ============================================================================
 
+# Apply any transformation spec. Dispatches on type. Used by brfss_pull().
+.brfss_apply_transformation_spec <- function(.data, spec, year) {
+  switch(
+    spec$type,
+    "categorical_map" = .brfss_apply_categorical_map(.data, spec, year),
+    "passthrough"     = .brfss_apply_passthrough(.data, spec, year),
+    stop("Unknown transformation type: '", spec$type, "'", call. = FALSE)
+  )
+}
+
+# Apply a passthrough: rename a single input column to the output column.
+# If the input is missing, output is all NA (with a warning).
+.brfss_apply_passthrough <- function(.data, spec, year) {
+  inputs <- .resolve_inputs_for_year(spec, year)
+  if (length(inputs) == 0L) {
+    stop("passthrough '", spec$output_column,
+         "' has no inputs declared.", call. = FALSE)
+  }
+  raw_col <- inputs[[1]]
+  if (!raw_col %in% names(.data)) {
+    warning(sprintf(
+      "passthrough '%s' for year %d: input column '%s' missing. ",
+      spec$output_column, year, raw_col),
+      "Output will be NA for this year.",
+      call. = FALSE)
+    .data[[spec$output_column]] <- NA
+    return(.data)
+  }
+  .data[[spec$output_column]] <- .data[[raw_col]]
+  .data
+}
+
 # Apply a categorical map to a per-year data frame.
 # Returns the data frame with an added/replaced column matching spec$output_column.
 .brfss_apply_categorical_map <- function(.data, spec, year) {
-  # Resolve which inputs apply this year.
+  # Resolve which inputs and levels apply this year.
   inputs <- .resolve_inputs_for_year(spec, year)
+  levels <- .resolve_levels_for_year(spec, year)
+
+  if (length(levels) == 0L) {
+    warning(sprintf(
+      "Categorical map '%s' has no levels for year %d. Output will be NA.",
+      spec$output_column, year),
+      call. = FALSE)
+    .data[[spec$output_column]] <- NA
+    return(.data)
+  }
 
   # Build an evaluation environment that combines:
   #   - aliases (alias_name -> column vector), with priority
@@ -265,15 +383,15 @@ brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
   # Evaluate each level's `when` expression and stack results.
   out <- rep(NA, nrow(.data))
   # Use the first level's value to infer output type (integer vs character)
-  out_type <- if (length(spec$levels) &&
-                   is.numeric(spec$levels[[1]]$value)) "integer" else "character"
+  out_type <- if (length(levels) &&
+                   is.numeric(levels[[1]]$value)) "integer" else "character"
   if (out_type == "integer") {
     out <- as.integer(out)
   } else {
     out <- as.character(out)
   }
 
-  for (lvl in spec$levels) {
+  for (lvl in levels) {
     cond <- tryCatch(
       eval(parse(text = lvl$when), envir = eval_env),
       error = function(e) {
@@ -283,6 +401,10 @@ brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
           call. = FALSE)
       }
     )
+    # Recycle scalar logical (e.g. `when: TRUE`) to the data length.
+    if (length(cond) == 1L && nrow(.data) > 1L) {
+      cond <- rep(cond, nrow(.data))
+    }
     if (length(cond) != nrow(.data)) {
       stop(sprintf(
         "Categorical map '%s' level value=%s: condition returned length %d, ",
@@ -320,6 +442,29 @@ brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
   spec$inputs %||% list()
 }
 
+# Determine which levels apply for a given year.
+# Order of precedence: by_year override > top-level levels > NULL.
+# Note: levels are NOT MERGED with the top-level — a by_year levels block
+# completely replaces them. This matches the mental model of a "different
+# coding for this year range" (e.g., INCOME2 codes 1-8 vs INCOME3 codes 1-11).
+.resolve_levels_for_year <- function(spec, year) {
+  by_year <- spec$by_year
+  if (is.null(by_year) || length(by_year) == 0L) {
+    return(spec$levels %||% list())
+  }
+  for (key in names(by_year)) {
+    if (.year_in_range(year, key)) {
+      blk <- by_year[[key]]
+      if (!is.null(blk$levels) && length(blk$levels) > 0L) {
+        return(blk$levels)
+      }
+      # block matched but no levels override; fall through to top-level
+      return(spec$levels %||% list())
+    }
+  }
+  spec$levels %||% list()
+}
+
 # Parse a year-range string like "2018-2024", "2012,2014", "2020"; check if year matches.
 .year_in_range <- function(year, range_spec) {
   year <- as.integer(year)
@@ -339,6 +484,40 @@ brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
 # ============================================================================
 # Internal: code generation (YAML -> readable R)
 # ============================================================================
+
+.render_passthrough_as_r <- function(spec, name) {
+  inputs <- spec$inputs %||% list()
+  raw_col <- if (length(inputs)) inputs[[1]] else NA_character_
+
+  out <- c(
+    sprintf("# transformations/%s.R", name),
+    "#",
+    "# AUTO-GENERATED from the corresponding .yaml file.",
+    "# DO NOT EDIT directly: changes to this file will be overwritten the next",
+    "# time brfss_render_transformation_code() runs.",
+    "#",
+    "# Edit the .yaml instead, then re-render.",
+    "#"
+  )
+
+  if (!is.null(spec$description) && nzchar(spec$description)) {
+    desc_lines <- strsplit(spec$description, "\n", fixed = TRUE)[[1]]
+    out <- c(out, paste0("# ", desc_lines), "#")
+  }
+
+  out <- c(out,
+    sprintf("# Type: passthrough (input column copied to output without recoding)"),
+    sprintf("# Input: %s -> %s", names(inputs)[1] %||% "?", raw_col %||% "?"),
+    "")
+
+  out <- c(out, "library(dplyr)", "")
+  out <- c(out, sprintf("%s <- function(.data, year) {", name))
+  out <- c(out, sprintf('  .data %%>%% mutate(%s = .data[["%s"]])',
+                        spec$output_column, raw_col))
+  out <- c(out, "}", "")
+
+  out
+}
 
 .render_categorical_map_as_r <- function(spec, name) {
   out <- character(0)
@@ -370,14 +549,28 @@ brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
   }
 
   # Document the levels in CDC-style table form
-  out <- c(out, "# Levels (first match wins):")
-  for (lvl in spec$levels) {
-    out <- c(out,
-      sprintf("#   %s = %s", as.character(lvl$value), lvl$label),
-      sprintf("#       when: %s", lvl$when)
-    )
+  if (!is.null(spec$levels) && length(spec$levels) > 0L) {
+    out <- c(out, "# Levels (first match wins):")
+    for (lvl in spec$levels) {
+      out <- c(out,
+        sprintf("#   %s = %s", as.character(lvl$value), lvl$label),
+        sprintf("#       when: %s", lvl$when)
+      )
+    }
+    out <- c(out, "")
   }
-  out <- c(out, "")
+  if (!is.null(spec$by_year) && length(spec$by_year) > 0L) {
+    out <- c(out, "# Year-aware blocks present:")
+    for (yr_key in names(spec$by_year)) {
+      blk <- spec$by_year[[yr_key]]
+      bits <- character(0)
+      if (!is.null(blk$inputs)) bits <- c(bits, "inputs")
+      if (!is.null(blk$levels)) bits <- c(bits, "levels")
+      out <- c(out, sprintf("#   %s: overrides %s", yr_key,
+                             paste(bits, collapse = " + ")))
+    }
+    out <- c(out, "")
+  }
 
   # The function body
   out <- c(out, "library(dplyr)", "")
@@ -425,18 +618,42 @@ brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
     out <- c(out, "")
   }
 
-  # Build the case_when() expression
+  # Build the case_when() expression. Use whatever levels block we can find:
+  # top-level if present, else first by_year block's levels.
+  effective_levels <- spec$levels
+  if (is.null(effective_levels) || length(effective_levels) == 0L) {
+    if (!is.null(spec$by_year) && length(spec$by_year)) {
+      for (key in names(spec$by_year)) {
+        if (!is.null(spec$by_year[[key]]$levels) &&
+            length(spec$by_year[[key]]$levels) > 0L) {
+          effective_levels <- spec$by_year[[key]]$levels
+          out <- c(out,
+            sprintf("  # NOTE: rendered using levels from by_year['%s']; ",
+                    key),
+            "  # other year-blocks have their own level sets — see the YAML.",
+            "")
+          break
+        }
+      }
+    }
+  }
+  if (is.null(effective_levels) || length(effective_levels) == 0L) {
+    out <- c(out, "  # No levels defined in this transformation.", "  .data",
+             "}", "")
+    return(out)
+  }
+
   out <- c(out, "  .data %>%")
   out <- c(out, sprintf("    mutate(%s = case_when(", spec$output_column))
 
-  for (i in seq_along(spec$levels)) {
-    lvl <- spec$levels[[i]]
+  for (i in seq_along(effective_levels)) {
+    lvl <- effective_levels[[i]]
     val_repr <- if (is.numeric(lvl$value)) {
       as.character(lvl$value)
     } else {
       sprintf('"%s"', lvl$value)
     }
-    sep <- if (i == length(spec$levels)) "" else ","
+    sep <- if (i == length(effective_levels)) "" else ","
     out <- c(out,
       sprintf("      %-50s ~ %s%s   # %s",
               lvl$when, val_repr, sep, lvl$label))

@@ -1,0 +1,20 @@
+
+```{r}
+remove.packages("brfssTools")  # in a fresh R session
+# Restart R again
+# Extract zip to overlay your package directory
+devtools::document()
+devtools::install_local("C:/My Documents/R Projects/brfssTools",
+                        quick = FALSE, build_vignettes = TRUE)
+# (build_vignettes = TRUE so the new vignette ships installed)
+# Restart R
+library(brfssTools)
+vignette("state-data-workflow")  # should now find it
+```
+
+
+
+
+
+
+

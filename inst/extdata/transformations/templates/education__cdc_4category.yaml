@@ -1,0 +1,31 @@
+# Template: education (CDC 4-category)
+#
+# Standard 4-category education from EDUCA. EDUCA codes have been stable
+# across BRFSS years 2012-2024.
+
+output_column: education
+type: categorical_map
+
+description: |
+  CDC 4-category education. Less than HS, HS grad, some college,
+  college grad.
+
+inputs:
+  educ: EDUCA
+
+levels:
+  - value: 1
+    label: "Less than high school"
+    when: educ %in% c(1, 2, 3)
+  - value: 2
+    label: "High school grad / GED"
+    when: educ == 4
+  - value: 3
+    label: "Some college"
+    when: educ == 5
+  - value: 4
+    label: "College graduate"
+    when: educ == 6
+  - value: 9
+    label: "Refused / Don't know"
+    when: TRUE

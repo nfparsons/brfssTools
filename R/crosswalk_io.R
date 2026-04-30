@@ -97,13 +97,21 @@ cw_load <- function(path = NULL) {
     .path               = path
   )
 
-  # Schema sanity
+  # Schema sanity. unverified column is added in 0.1.0; back-fill if a
+  # legacy crosswalk doesn't have it yet.
   required_cw <- c("year","state_var","cdc_var","is_primary","source",
                    "score","notes")
   missing_cw <- setdiff(required_cw, names(bundle$crosswalk))
   if (length(missing_cw) > 0) {
     stop("crosswalk.csv missing columns: ",
          paste(missing_cw, collapse=", "), call. = FALSE)
+  }
+  if (!"unverified" %in% names(bundle$crosswalk)) {
+    bundle$crosswalk$unverified <- 0L
+  } else {
+    # Coerce to integer in case CSV read it as char or logical
+    bundle$crosswalk$unverified <- as.integer(bundle$crosswalk$unverified)
+    bundle$crosswalk$unverified[is.na(bundle$crosswalk$unverified)] <- 0L
   }
 
   # Auto-populate concept_id where missing.
@@ -234,12 +242,26 @@ cw_save <- function(bundle, path = NULL) {
 
 #' Find the row index in the crosswalk for (year, state_var, cdc_var)
 #' @keywords internal
-.cw_find <- function(bundle, year, state_var = NA_character_,
-                     cdc_var = NA_character_) {
+# Find rows in the crosswalk matching (year, state_var, cdc_var).
+# - NA values are treated as literal NA matches (i.e. is.na(state_var) == TRUE).
+# - Pass `NULL` to skip filtering on a field.
+.cw_find <- function(bundle, year, state_var = NULL, cdc_var = NULL) {
   cw <- bundle$crosswalk
   matches <- cw$year == year
-  if (!is.na(state_var)) matches <- matches & cw$state_var == state_var
-  if (!is.na(cdc_var))   matches <- matches & cw$cdc_var   == cdc_var
+  if (!is.null(state_var)) {
+    if (is.na(state_var)) {
+      matches <- matches & is.na(cw$state_var)
+    } else {
+      matches <- matches & !is.na(cw$state_var) & cw$state_var == state_var
+    }
+  }
+  if (!is.null(cdc_var)) {
+    if (is.na(cdc_var)) {
+      matches <- matches & is.na(cw$cdc_var)
+    } else {
+      matches <- matches & !is.na(cw$cdc_var) & cw$cdc_var == cdc_var
+    }
+  }
   which(matches)
 }
 
@@ -322,7 +344,8 @@ cw_add_pair <- function(bundle, year, state_var, cdc_var,
     is_primary = as.integer(is_primary),
     source     = source,
     score      = score,
-    notes      = notes
+    notes      = notes,
+    unverified = 0L
   )
 
   bundle$crosswalk <- dplyr::bind_rows(bundle$crosswalk, new_row) |>
@@ -371,6 +394,83 @@ cw_remove_pair <- function(bundle, year, state_var, cdc_var) {
   bundle
 }
 
+#' Map a seeded CDC variable to a state variable
+#'
+#' Workflow: a CDC-seeded crosswalk row has `state_var = NA` because
+#' the user hasn't yet identified the state column for it. This function
+#' updates the seeded row in place by setting its `state_var`, optionally
+#' updating other fields (concept_id, source, notes), and clearing the
+#' `unverified` flag.
+#'
+#' If you're starting from an unseeded crosswalk (no row exists for this
+#' CDC variable in this year), use `cw_add_pair()` instead.
+#'
+#' @param bundle      Bundle from `cw_load()`.
+#' @param year        Integer year.
+#' @param cdc_var     CDC variable name (must exist as a seeded row).
+#' @param state_var   State variable name (must exist in state_codebook
+#'   unless `allow_unknown = TRUE`).
+#' @param concept_id  Optional new concept_id. If NULL, leaves it unchanged.
+#' @param source      Source label. Default "manual_edit" (replaces "cdc_seed").
+#' @param notes       Optional notes string.
+#' @param allow_unknown If TRUE, won't error when state_var is missing
+#'   from the state codebook for this year.
+#' @return Updated bundle.
+#' @export
+#' @examples
+#' \dontrun{
+#' cw <- cw_load()
+#' # 2024's ASTHMA3 seeded row has state_var = NA; map it to your codebook:
+#' cw <- cw_map_seeded(cw, year = 2024, cdc_var = "ASTHMA3",
+#'                     state_var = "ASTHMA3")
+#' cw_save(cw)
+#' }
+#' @export
+cw_map_seeded <- function(bundle, year, cdc_var, state_var,
+                          concept_id = NULL,
+                          source = "manual_edit",
+                          notes = NULL,
+                          allow_unknown = FALSE) {
+  year <- as.integer(year)
+  .cw_validate_var(bundle, year, state_var, "state", allow_unknown)
+  .cw_validate_var(bundle, year, cdc_var,   "cdc",   allow_unknown)
+
+  # Find the seeded row (state_var IS NA, cdc_var matches).
+  idx <- .cw_find(bundle, year, state_var = NA, cdc_var = cdc_var)
+  if (length(idx) == 0L) {
+    stop(sprintf(
+      "No seeded row found for year %d, cdc_var '%s'.\n",
+      year, cdc_var),
+      "If a row exists with a different state_var, use cw_update_pair() ",
+      "or cw_add_pair() instead.", call. = FALSE)
+  }
+  if (length(idx) > 1L) {
+    stop(sprintf("Found %d seeded rows for year %d, cdc_var '%s' — ",
+                 length(idx), year, cdc_var),
+         "crosswalk integrity violated.", call. = FALSE)
+  }
+
+  # Confirm no conflicting non-seeded row already exists for this state_var
+  conflict <- .cw_find(bundle, year, state_var, cdc_var)
+  if (length(conflict) > 0L && !identical(conflict, idx)) {
+    stop(sprintf(
+      "A non-seeded row already exists for year %d, %s <-> %s. ",
+      year, state_var, cdc_var),
+      "Remove or update it before mapping the seed.", call. = FALSE)
+  }
+
+  if (!is.null(concept_id)) {
+    .cw_validate_concept_id(concept_id)
+    bundle$crosswalk$concept_id[idx] <- concept_id
+  }
+  bundle$crosswalk$state_var[idx]  <- state_var
+  bundle$crosswalk$source[idx]     <- source
+  if (!is.null(notes)) bundle$crosswalk$notes[idx] <- notes
+  bundle$crosswalk$unverified[idx] <- 0L
+
+  bundle
+}
+
 #' Update fields on an existing pair
 #'
 #' Only `concept_id`, `is_primary`, `source`, `score`, and `notes` are
@@ -383,7 +483,8 @@ cw_remove_pair <- function(bundle, year, state_var, cdc_var) {
 cw_update_pair <- function(bundle, year, state_var, cdc_var,
                            concept_id = NULL,
                            is_primary = NULL, source = NULL,
-                           score = NULL, notes = NULL) {
+                           score = NULL, notes = NULL,
+                           unverified = NULL) {
   year <- as.integer(year)
   idx <- .cw_find(bundle, year, state_var, cdc_var)
   if (length(idx) == 0L) {
@@ -403,6 +504,7 @@ cw_update_pair <- function(bundle, year, state_var, cdc_var,
   if (!is.null(source))     bundle$crosswalk$source[idx]     <- source
   if (!is.null(score))      bundle$crosswalk$score[idx]      <- as.numeric(score)
   if (!is.null(notes))      bundle$crosswalk$notes[idx]      <- notes
+  if (!is.null(unverified)) bundle$crosswalk$unverified[idx] <- as.integer(unverified)
 
   # If we set is_primary=1 here, demote any other primaries for same
   # (year, state_var) so invariant is preserved
@@ -415,6 +517,31 @@ cw_update_pair <- function(bundle, year, state_var, cdc_var,
     }
   }
 
+  bundle
+}
+
+#' Mark a crosswalk row as verified (clear the unverified flag)
+#'
+#' Convenience wrapper around `cw_update_pair()` for the common case of
+#' confirming a CDC-seeded row's mapping.
+#'
+#' @param bundle    Bundle from `cw_load()`.
+#' @param year      Integer year.
+#' @param state_var State variable name. Use `NA` for unmapped seeded rows.
+#' @param cdc_var   CDC variable name.
+#' @return Updated bundle.
+#' @export
+cw_verify_pair <- function(bundle, year, state_var, cdc_var) {
+  year <- as.integer(year)
+  idx <- .cw_find(bundle, year, state_var, cdc_var)
+  if (length(idx) == 0L) {
+    stop(sprintf("No such pair: %d %s <-> %s",
+                 year,
+                 ifelse(is.na(state_var), "<NA>", state_var),
+                 ifelse(is.na(cdc_var), "<NA>", cdc_var)),
+         call. = FALSE)
+  }
+  bundle$crosswalk$unverified[idx] <- 0L
   bundle
 }
 

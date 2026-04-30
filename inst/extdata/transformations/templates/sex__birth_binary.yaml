@@ -1,0 +1,27 @@
+# Template: sex (sex assigned at birth, binary)
+#
+# Sex assigned at birth from BIRTHSEX (CDC's question, available 2018+).
+# For older years where BIRTHSEX isn't fielded, falls back to SEX (the
+# interviewer-coded variable used 2012-2018) or SEX1 (2018-only transition).
+#
+# All these CDC variables use the same coding: 1=Male, 2=Female,
+# 7=Don't know, 9=Refused.
+
+output_column: sex
+type: passthrough
+
+description: |
+  Sex assigned at birth, binary. Year-aware fallback to SEX/SEX1 for
+  pre-BIRTHSEX years.
+
+# Default points to BIRTHSEX (modern years). by_year overrides for older.
+inputs:
+  sex: BIRTHSEX
+
+by_year:
+  "2012-2017":
+    inputs:
+      sex: SEX
+  "2018":
+    inputs:
+      sex: SEX1

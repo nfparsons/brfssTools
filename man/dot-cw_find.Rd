@@ -4,7 +4,7 @@
 \alias{.cw_find}
 \title{Find the row index in the crosswalk for (year, state_var, cdc_var)}
 \usage{
-.cw_find(bundle, year, state_var = NA_character_, cdc_var = NA_character_)
+.cw_find(bundle, year, state_var = NULL, cdc_var = NULL)
 }
 \description{
 Find the row index in the crosswalk for (year, state_var, cdc_var)

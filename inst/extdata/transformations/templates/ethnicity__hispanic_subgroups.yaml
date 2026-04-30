@@ -1,0 +1,35 @@
+# Template: ethnicity (Hispanic origin, subgroups)
+#
+# Hispanic origin with subgroups using HISPANC3 codes:
+# 1=Mexican, 2=Puerto Rican, 3=Cuban, 4=Other Hispanic, 5=Not Hispanic.
+# HISPANC3 has been stable across BRFSS years.
+
+output_column: ethnicity
+type: categorical_map
+
+description: |
+  Hispanic ethnicity with subgroups. Mexican, Puerto Rican, Cuban,
+  Other Hispanic, Non-Hispanic.
+
+inputs:
+  hisp: HISPANC3
+
+levels:
+  - value: 1
+    label: "Mexican"
+    when: hisp == 1
+  - value: 2
+    label: "Puerto Rican"
+    when: hisp == 2
+  - value: 3
+    label: "Cuban"
+    when: hisp == 3
+  - value: 4
+    label: "Other Hispanic"
+    when: hisp == 4
+  - value: 5
+    label: "Non-Hispanic"
+    when: hisp == 5
+  - value: 9
+    label: "Refused / Don't know"
+    when: TRUE

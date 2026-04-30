@@ -1,0 +1,35 @@
+# Template: education (CDC 6-category)
+#
+# Full EDUCA structure preserved. Codes stable across BRFSS years.
+
+output_column: education
+type: categorical_map
+
+description: |
+  CDC 6-category education preserving EDUCA's full structure.
+
+inputs:
+  educ: EDUCA
+
+levels:
+  - value: 1
+    label: "Never attended / kindergarten only"
+    when: educ == 1
+  - value: 2
+    label: "Grades 1-8 (elementary)"
+    when: educ == 2
+  - value: 3
+    label: "Grades 9-11 (some high school)"
+    when: educ == 3
+  - value: 4
+    label: "High school grad / GED"
+    when: educ == 4
+  - value: 5
+    label: "Some college / technical school"
+    when: educ == 5
+  - value: 6
+    label: "College graduate"
+    when: educ == 6
+  - value: 9
+    label: "Refused / Don't know"
+    when: TRUE

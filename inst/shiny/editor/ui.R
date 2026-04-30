@@ -181,7 +181,8 @@ ui <- fluidPage(
           div(style = "margin-bottom: 12px;",
               radioButtons("view_mode", NULL,
                            choices = c("CDC-anchored" = "cdc",
-                                       "State-anchored" = "state"),
+                                       "State-anchored" = "state",
+                                       "Demographics" = "demo"),
                            selected = "cdc", inline = TRUE)),
           uiOutput("main_view")
       ),

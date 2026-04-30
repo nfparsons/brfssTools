@@ -169,7 +169,14 @@ brfss_pull <- function(concepts          = NULL,
 }
 
 .core_demographic_concepts <- function(bundle) {
-  out <- c("AGE", "SEX")
+  out <- character(0)
+  cw_concepts <- if (!is.null(bundle$crosswalk))
+                   unique(bundle$crosswalk$concept_id) else character(0)
+
+  # Only include AGE and SEX if they exist in the user's crosswalk.
+  if ("AGE" %in% cw_concepts) out <- c(out, "AGE")
+  if ("SEX" %in% cw_concepts) out <- c(out, "SEX")
+
   trans_dir <- file.path(bundle$.path, "transformations")
   if (dir.exists(trans_dir)) {
     if (file.exists(file.path(trans_dir, "race.yaml")) ||
@@ -248,7 +255,7 @@ brfss_pull <- function(concepts          = NULL,
         }
       }
     } else if (cls$kind == "yaml") {
-      spec <- brfss_load_categorical_map(cls$path)
+      spec <- brfss_load_transformation_spec(cls$path)
       year_inputs <- .resolve_inputs_for_year(spec, year)
       raw_cols_needed <- c(raw_cols_needed, unname(unlist(year_inputs)))
     } else if (cls$kind == "r") {
@@ -284,8 +291,8 @@ brfss_pull <- function(concepts          = NULL,
 
   for (cls in classified) {
     if (cls$kind == "yaml") {
-      spec <- brfss_load_categorical_map(cls$path)
-      out <- .brfss_apply_categorical_map(out, spec, year)
+      spec <- brfss_load_transformation_spec(cls$path)
+      out <- .brfss_apply_transformation_spec(out, spec, year)
     }
   }
 

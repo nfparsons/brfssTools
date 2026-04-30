@@ -59,14 +59,18 @@
   toks
 }
 
-# Token-set similarity (Jaccard).
+# Token-set similarity. CDC XPT labels are heavily truncated (~40 chars,
+# often cut mid-word) while OHA labels carry the full question. Pure Jaccard
+# punishes that asymmetry. Use overlap-coefficient style: intersection over
+# the SMALLER token set. This rewards "all of CDC's tokens are present in
+# OHA" without penalizing OHA for being longer.
 .token_sim <- function(a, b) {
   ta <- unique(.tokenize(a))
   tb <- unique(.tokenize(b))
   if (length(ta) == 0L || length(tb) == 0L) return(0)
-  inter <- length(intersect(ta, tb))
-  union <- length(union(ta, tb))
-  if (union == 0L) 0 else inter / union
+  inter   <- length(intersect(ta, tb))
+  smaller <- min(length(ta), length(tb))
+  if (smaller == 0L) 0 else inter / smaller
 }
 
 # Parse a value-labels string like "1 - Yes; 2 - No; 7a - Don't know"
@@ -76,7 +80,10 @@
   pairs <- strsplit(s, "\\s*;\\s*")[[1]]
   out   <- character()
   for (p in pairs) {
-    kv <- strsplit(p, "\\s*-\\s*", n = 2L)[[1]]
+    # Split on the first "-" only (some labels contain hyphens, e.g.
+    # "1 - Yes - definitely"). stringr::str_split with n=2 gives this;
+    # base strsplit doesn't, so use a regex with a once-anchored "-".
+    kv <- stringr::str_split(p, "\\s*-\\s*", n = 2L)[[1]]
     if (length(kv) != 2L) next
     code <- sub("[a-zA-Z]+$", "", trimws(kv[1]))   # "7a" -> "7"
     lbl  <- tolower(trimws(kv[2]))
@@ -152,7 +159,7 @@ brfss_propose_matches <- function(oha_cb,
                                   weights   = list(
                                     name_exact = 1.0,
                                     name_fuzzy = 0.4,
-                                    label_sim  = 0.5,
+                                    label_sim  = 0.8,
                                     values_sim = 0.5
                                   )) {
 

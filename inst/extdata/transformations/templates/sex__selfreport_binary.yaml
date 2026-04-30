@@ -1,0 +1,26 @@
+# Template: sex (self-reported, binary)
+#
+# Self-reported sex (asked of respondent, not interviewer-coded).
+# CDC's variable name has shifted across years:
+#   2012-2018: SEX (interviewer-coded — closest equivalent)
+#   2019:      SEX1 (first self-report year)
+#   2020-2024: SEXVAR (renamed from SEX1)
+#
+# Coding stable across all variants: 1=Male, 2=Female.
+
+output_column: sex
+type: passthrough
+
+description: |
+  Self-reported sex, binary. Year-aware: SEX -> SEX1 -> SEXVAR.
+
+inputs:
+  sex: SEXVAR
+
+by_year:
+  "2012-2018":
+    inputs:
+      sex: SEX
+  "2019":
+    inputs:
+      sex: SEX1

@@ -1,0 +1,37 @@
+# Template: age (CDC 6-group)
+#
+# CDC's standard age grouping for adults: 18-24, 25-34, 35-44, 45-54,
+# 55-64, 65+. Matches CDC's _AGEG5YR-derived 6-category cut.
+
+output_column: age
+type: categorical_map
+
+description: |
+  CDC standard 6-group adult age categorization.
+  18-24, 25-34, 35-44, 45-54, 55-64, 65+.
+
+inputs:
+  agecol: _AGE80
+
+levels:
+  - value: 1
+    label: "18-24"
+    when: agecol >= 18 & agecol <= 24
+  - value: 2
+    label: "25-34"
+    when: agecol >= 25 & agecol <= 34
+  - value: 3
+    label: "35-44"
+    when: agecol >= 35 & agecol <= 44
+  - value: 4
+    label: "45-54"
+    when: agecol >= 45 & agecol <= 54
+  - value: 5
+    label: "55-64"
+    when: agecol >= 55 & agecol <= 64
+  - value: 6
+    label: "65+"
+    when: agecol >= 65 & agecol < 200
+  - value: 9
+    label: "Unknown / Refused"
+    when: TRUE

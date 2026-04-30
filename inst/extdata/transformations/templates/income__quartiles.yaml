@@ -1,0 +1,38 @@
+# Template: income (4 broad bands, year-aware)
+#
+# Cross-year-comparable income bands: <$25K, $25-50K, $50-75K, $75K+.
+# Both INCOME2 and INCOME3 use the same codes for 1-7 (the brackets that
+# matter for the cut at $75K), so the levels are shared and only the
+# input column changes.
+
+output_column: income
+type: categorical_map
+
+description: |
+  Four broad income bands designed for cross-year comparability between
+  pre-2021 INCOME2 and 2021+ INCOME3.
+
+inputs:
+  inc: INCOME3
+
+by_year:
+  "2012-2020":
+    inputs:
+      inc: INCOME2
+
+levels:
+  - value: 1
+    label: "Less than $25,000"
+    when: inc %in% c(1, 2, 3, 4)
+  - value: 2
+    label: "$25,000 - $49,999"
+    when: inc %in% c(5, 6)
+  - value: 3
+    label: "$50,000 - $74,999"
+    when: inc == 7
+  - value: 4
+    label: "$75,000 or more"
+    when: inc %in% c(8, 9, 10, 11)
+  - value: 9
+    label: "Refused / Don't know"
+    when: TRUE

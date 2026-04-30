@@ -39,8 +39,140 @@ cw_mark_cdc_only   <- .ns$cw_mark_cdc_only
 cw_replace_cdc_partner   <- .ns$cw_replace_cdc_partner
 cw_replace_state_partner <- .ns$cw_replace_state_partner
 cw_rename_concept        <- .ns$cw_rename_concept
+cw_map_seeded            <- .ns$cw_map_seeded
+cw_verify_pair           <- .ns$cw_verify_pair
+
+# Demographics tab functions
+brfss_setup_demographic            <- .ns$brfss_setup_demographic
+brfss_list_demographic_templates   <- .ns$brfss_list_demographic_templates
+brfss_demographic_status           <- .ns$brfss_demographic_status
+brfss_render_transformation_code   <- .ns$brfss_render_transformation_code
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
+
+# ============================================================================
+# Demographics tab renderers
+# ============================================================================
+
+# Left nav for the Demographics view: just a header, since the demographics
+# checklist lives in the main pane. Future: could show "Status" links here.
+.render_demographics_nav <- function() {
+  tagList(
+    h2("Demographics"),
+    div(style = "padding: 0 16px; font-size: 12px; color: #666; line-height: 1.5;",
+        "Set up your study's demographic variables. ",
+        "These compose into derived columns that ",
+        tags$code("brfss_pull()"),
+        " resolves automatically."),
+    div(style = "padding: 14px 16px; font-size: 11px; color: #888;",
+        "Big six: age, sex, race, ethnicity, education, income.")
+  )
+}
+
+# Main pane for the Demographics view.
+.render_demographics_pane <- function(input, bundle) {
+  status <- brfss_demographic_status()
+
+  big_six <- c("age", "sex", "race", "ethnicity", "education", "income")
+  pretty_names <- c(age = "Age", sex = "Sex", race = "Race",
+                    ethnicity = "Ethnicity", education = "Education",
+                    income = "Income")
+
+  # Inferred current template name from the YAML basename of the original
+  # template (we store the template name in a brief comment, but more
+  # robustly, just say "configured" if a file exists).
+  rows <- lapply(big_six, function(d) {
+    info <- status[status$demographic == d, ]
+    is_configured <- nrow(info) == 1 && info$status == "configured"
+    kind <- if (is_configured) info$kind else NA_character_
+    fp <- if (is_configured) info$path else NA_character_
+
+    div(class = "demographic-row",
+        style = paste0(
+          "display:flex; align-items:center; padding:14px 16px; ",
+          "background:white; border-radius:6px; margin-bottom:8px; ",
+          "box-shadow:0 1px 2px rgba(0,0,0,0.05);"),
+        div(style = "flex:0 0 140px; font-weight:600; font-size:14px;",
+            pretty_names[[d]]),
+        div(style = "flex:1; font-size:12px; color:#555;",
+            if (is_configured) {
+              tagList(
+                tags$span(style = "color:#1f5025; font-weight:600;",
+                          "\u2713 configured"),
+                tags$span(style = "color:#888; margin-left:6px;",
+                          sprintf("(%s)", kind))
+              )
+            } else {
+              tags$span(style = "color:#aaa;", "\u2717 not configured")
+            }
+        ),
+        div(class = "action-row", style = "flex:0 0 auto;",
+            if (is_configured) {
+              tagList(
+                actionButton(paste0("demo_edit_", d), "Edit YAML",
+                             class = "btn-sm btn-secondary"),
+                actionButton(paste0("demo_change_", d), "Change template",
+                             class = "btn-sm btn-secondary"),
+                actionButton(paste0("demo_remove_", d), "Remove",
+                             class = "btn-sm btn-outline-danger")
+              )
+            } else {
+              actionButton(paste0("demo_setup_", d), "Set up...",
+                           class = "btn-sm btn-primary")
+            }
+        )
+    )
+  })
+
+  div(
+    h2("Demographics setup", style = "margin-bottom:12px;"),
+    div(style = "font-size:13px; color:#555; margin-bottom:18px; max-width:680px;",
+        "All of your study's demographic variables are managed here. ",
+        "Setting up a demographic creates a YAML transformation in your ",
+        "config dir's ",
+        tags$code("transformations/"),
+        " folder. After setup, edit the YAML if your codebook uses ",
+        "different column names than the template assumes."),
+    do.call(tagList, rows)
+  )
+}
+
+# Build a modal for selecting a template for a given demographic.
+.demographic_setup_modal <- function(name) {
+  templates <- brfss_list_demographic_templates(name = name)
+  if (nrow(templates) == 0L) {
+    return(modalDialog(
+      title = sprintf("No templates for '%s'", name),
+      "No shipped templates found. You'll need to write the transformation YAML by hand.",
+      easyClose = TRUE
+    ))
+  }
+
+  template_choices <- setNames(
+    templates$template,
+    sprintf("%s \u2014 %s", templates$template, templates$description)
+  )
+
+  modalDialog(
+    title = sprintf("Set up '%s'", name),
+    div(style = "font-size:13px; color:#555; margin-bottom:14px;",
+        "Pick a template that matches how you want this demographic ",
+        "defined. You can edit the YAML afterward to fine-tune."),
+    selectInput(paste0("demo_template_", name),
+                "Template:",
+                choices = template_choices,
+                width = "100%"),
+    div(style = "font-size:11px; color:#888;",
+        "After setup, the YAML opens for review. ",
+        "Inputs may need editing to match your state codebook column names."),
+    footer = tagList(
+      modalButton("Cancel"),
+      actionButton(paste0("demo_confirm_", name),
+                   "Set up", class = "btn-primary")
+    ),
+    easyClose = TRUE
+  )
+}
 
 # ============================================================================
 # Build a "concept index" from a bundle for the heatmap.
@@ -66,12 +198,28 @@ build_concept_index <- function(bundle) {
            call. = FALSE)
     }
     for (i in seq_len(nrow(cw))) {
+      # Determine kind:
+      # - If state_var is NA / empty: this is a CDC-seeded row, not yet mapped.
+      # - Else if is_primary == 1: standard paired.
+      # - Else: secondary mapping.
+      sv <- cw$state_var[i]
+      is_seeded <- is.na(sv) || !nzchar(sv)
+      row_kind <- if (is_seeded) {
+        "seeded"
+      } else if (isTRUE(cw$is_primary[i] == 1L)) {
+        "paired"
+      } else {
+        "paired_alt"
+      }
+      # Row "unverified" flag (defaults to 0 if column absent).
+      unv <- if ("unverified" %in% names(cw)) cw$unverified[i] else 0L
       facts[[length(facts) + 1L]] <- list(
         concept_id = cw$concept_id[i],
         year = cw$year[i],
-        state_var = cw$state_var[i],
+        state_var = if (is_seeded) "" else sv,
         cdc_var = cw$cdc_var[i],
-        kind = if (cw$is_primary[i] == 1L) "paired" else "paired_alt"
+        kind = row_kind,
+        unverified = as.integer(unv %||% 0L)
       )
     }
   }
@@ -411,6 +559,8 @@ server <- function(input, output, session) {
   selected_cid <- reactiveVal(NULL)
   selected_year <- reactiveVal(NULL)
   active_domain <- reactiveVal(NULL)
+  demo_refresh <- reactiveVal(0L)
+  bump_demo <- function() demo_refresh(demo_refresh() + 1L)
 
   taxonomy_map <- reactive({
     source_taxonomy_map(bundle()$cdc_codebook)
@@ -474,6 +624,10 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   output$nav_pane_content <- renderUI({
+    if (view_mode() == "demo") {
+      return(.render_demographics_nav())
+    }
+
     ci <- concept_with_domain()
     if (nrow(ci) == 0) return(div("No concepts."))
 
@@ -523,6 +677,12 @@ server <- function(input, output, session) {
   # ------------------------------------------------------------------------
 
   output$main_view <- renderUI({
+    if (view_mode() == "demo") {
+      # Depend on demo_refresh so the pane re-renders after setup/remove.
+      demo_refresh()
+      return(.render_demographics_pane(input, bundle))
+    }
+
     dom <- active_domain()
     if (is.null(dom)) return(div(class = "placeholder", "Select a domain."))
 
@@ -768,11 +928,17 @@ server <- function(input, output, session) {
       r <- yr_facts[i, ]
       kind <- r$kind
       sv <- r$state_var; cv <- r$cdc_var
-      
-      # Lookup current notes/source/score from crosswalk if paired
-      meta <- if (kind %in% c("paired","paired_alt")) {
+      unv <- if ("unverified" %in% names(r)) r$unverified else 0L
+
+      # Lookup current notes/source/score from crosswalk if paired or seeded
+      # (both live in the crosswalk; seeded rows just have NA state_var).
+      meta <- if (kind %in% c("paired","paired_alt","seeded")) {
         cw <- bundle()$crosswalk
-        hit <- cw[cw$year == yr & cw$state_var == sv & cw$cdc_var == cv, ]
+        hit <- if (kind == "seeded") {
+          cw[cw$year == yr & is.na(cw$state_var) & cw$cdc_var == cv, ]
+        } else {
+          cw[cw$year == yr & cw$state_var == sv & cw$cdc_var == cv, ]
+        }
         if (nrow(hit) >= 1) hit[1, ] else NULL
       } else NULL
 
@@ -782,6 +948,7 @@ server <- function(input, output, session) {
             "paired_alt" = "Secondary pair",
             "state_only" = "State-only (no CDC partner)",
             "cdc_only" = "CDC-only (state didn't field)",
+            "seeded" = if (unv == 1L) "CDC seed (unverified)" else "CDC seed (verified, not mapped)",
             "Pair")),
           div(class = "var-name", style = "margin-top:4px;",
               if (sv != "" && cv != "")
@@ -1182,4 +1349,104 @@ server <- function(input, output, session) {
     selected_cid(NULL); selected_year(NULL)
     showNotification("Reloaded.", type = "message")
   })
+
+  # ------------------------------------------------------------------------
+  # Demographics tab observers
+  # ------------------------------------------------------------------------
+  # Buttons are dynamically named (demo_setup_age, demo_setup_sex, ...).
+  # We register one observeEvent per (action, demographic).
+
+  big_six <- c("age", "sex", "race", "ethnicity", "education", "income")
+
+  for (d in big_six) {
+    local({
+      dem <- d  # capture in local scope per iteration
+
+      # Set up: open template-picker modal
+      observeEvent(input[[paste0("demo_setup_", dem)]], {
+        showModal(.demographic_setup_modal(dem))
+      })
+
+      # Confirm: read the selected template, run setup
+      observeEvent(input[[paste0("demo_confirm_", dem)]], {
+        tmpl <- input[[paste0("demo_template_", dem)]]
+        if (is.null(tmpl) || !nzchar(tmpl)) {
+          showNotification("No template selected.", type = "warning")
+          return()
+        }
+        result <- tryCatch(
+          brfss_setup_demographic(name = dem, template = tmpl,
+                                   path = ed_path, edit = FALSE,
+                                   overwrite = TRUE),
+          error = function(e) e
+        )
+        if (inherits(result, "error")) {
+          showNotification(sprintf("Failed: %s", conditionMessage(result)),
+                            type = "error", duration = 8)
+        } else {
+          showNotification(sprintf("Set up '%s' from template '%s'.",
+                                    dem, tmpl),
+                            type = "message")
+          bump_demo()
+        }
+        removeModal()
+      })
+
+      # Edit: open the YAML in the user's editor
+      observeEvent(input[[paste0("demo_edit_", dem)]], {
+        fp <- file.path(ed_path, "transformations", paste0(dem, ".yaml"))
+        if (!file.exists(fp)) {
+          showNotification("Transformation file not found.", type = "warning")
+          return()
+        }
+        tryCatch(utils::file.edit(fp),
+                 error = function(e) {
+                   showNotification(
+                     sprintf("Couldn't open editor: %s. File at %s",
+                             conditionMessage(e), fp),
+                     type = "warning", duration = 8)
+                 })
+      })
+
+      # Change template: open the same setup modal (overwrite=TRUE handles it)
+      observeEvent(input[[paste0("demo_change_", dem)]], {
+        showModal(.demographic_setup_modal(dem))
+      })
+
+      # Remove: delete the YAML (and .R companion)
+      observeEvent(input[[paste0("demo_remove_", dem)]], {
+        showModal(modalDialog(
+          title = sprintf("Remove '%s' transformation?", dem),
+          div("This deletes the YAML and its companion .R file from your ",
+              "config dir's transformations/ folder. Cannot be undone."),
+          easyClose = TRUE,
+          footer = tagList(
+            modalButton("Cancel"),
+            actionButton(paste0("demo_confirm_remove_", dem),
+                          "Delete", class = "btn-danger")
+          )
+        ))
+      })
+
+      observeEvent(input[[paste0("demo_confirm_remove_", dem)]], {
+        trans_dir <- file.path(ed_path, "transformations")
+        files_to_remove <- c(
+          file.path(trans_dir, paste0(dem, ".yaml")),
+          file.path(trans_dir, paste0(dem, ".yml")),
+          file.path(trans_dir, paste0(dem, ".R"))
+        )
+        for (fp in files_to_remove) {
+          if (file.exists(fp)) {
+            # .bak rotation
+            file.copy(fp, paste0(fp, ".bak"), overwrite = TRUE)
+            file.remove(fp)
+          }
+        }
+        showNotification(sprintf("Removed '%s'. Backups in transformations/.",
+                                  dem), type = "message")
+        bump_demo()
+        removeModal()
+      })
+    })
+  }
 }

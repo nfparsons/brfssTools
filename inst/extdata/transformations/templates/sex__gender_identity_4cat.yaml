@@ -1,0 +1,53 @@
+# Template: sex (gender identity, 4-category)
+#
+# Combines BIRTHSEX with TRNSGNDR (transgender identity) for a four-
+# category derived gender identity: cisgender male, cisgender female,
+# transgender, gender-non-binary/non-conforming.
+#
+# Both BIRTHSEX and TRNSGNDR are available 2018+ (TRNSGNDR was earlier
+# but as part of the optional SOGI module — coverage varies by state-year).
+# For older years this template falls back to producing only Male/Female
+# from SEX with NA elsewhere.
+
+output_column: sex
+type: categorical_map
+
+description: |
+  Gender identity. Combines BIRTHSEX with TRNSGNDR (SOGI module).
+
+inputs:
+  birth: BIRTHSEX
+  trans: TRNSGNDR
+
+by_year:
+  "2012-2017":
+    inputs:
+      birth: SEX
+      trans: SEX     # placeholder; older years lack TRNSGNDR
+    levels:
+      - value: 1
+        label: "Cisgender male (assumed)"
+        when: birth == 1
+      - value: 2
+        label: "Cisgender female (assumed)"
+        when: birth == 2
+      - value: 9
+        label: "Refused / Don't know"
+        when: TRUE
+
+levels:
+  - value: 4
+    label: "Non-binary / non-conforming"
+    when: trans == 3
+  - value: 3
+    label: "Transgender"
+    when: trans %in% c(1, 2)
+  - value: 1
+    label: "Cisgender male"
+    when: birth == 1 & (is.na(trans) | trans == 4)
+  - value: 2
+    label: "Cisgender female"
+    when: birth == 2 & (is.na(trans) | trans == 4)
+  - value: 9
+    label: "Refused / Don't know"
+    when: TRUE

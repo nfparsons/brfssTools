@@ -10,7 +10,7 @@ brfss_propose_matches(
   year = NULL,
   top_k = 5L,
   min_score = 0.3,
-  weights = list(name_exact = 1, name_fuzzy = 0.4, label_sim = 0.5, values_sim = 0.5)
+  weights = list(name_exact = 1, name_fuzzy = 0.4, label_sim = 0.8, values_sim = 0.5)
 )
 }
 \arguments{

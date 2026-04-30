@@ -1,0 +1,36 @@
+# Template: race (OMB 5-category collapsed)
+#
+# Federal OMB Statistical Policy Directive 15 categories. Collapses
+# AIAN/NHPI/Other into "Other" for the 5-category version. Same logic
+# as cdc_9category but with multiracial collapsed into Other for
+# simpler tables.
+
+output_column: race
+type: categorical_map
+
+description: |
+  OMB 5-category race + Hispanic. White, Black, Hispanic, Asian, Other.
+
+inputs:
+  mrace: _MRACE1
+  hisp:  _HISPANC
+
+levels:
+  - value: 3
+    label: "Hispanic"
+    when: hisp == 1
+  - value: 1
+    label: "White, NH"
+    when: mrace == 1 & hisp == 2
+  - value: 2
+    label: "Black, NH"
+    when: mrace == 2 & hisp == 2
+  - value: 4
+    label: "Asian, NH"
+    when: mrace == 4 & hisp == 2
+  - value: 5
+    label: "Other, NH"
+    when: mrace %in% c(3, 5, 6, 7) & hisp == 2
+  - value: 9
+    label: "Don't know / Refused"
+    when: TRUE

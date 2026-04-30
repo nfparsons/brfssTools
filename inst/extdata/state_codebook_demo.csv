@@ -1,0 +1,33 @@
+year,raw_var_name,label,value_labels,position
+2022,SEQNO,Annual Sequence Number,,1
+2022,_STATE,State FIPS Code,,2
+2022,GENHLTH,General Health,1=Excellent;2=Very good;3=Good;4=Fair;5=Poor;7=Don't know;9=Refused,3
+2022,EXAMPLE_AGE,Respondent Age (continuous),,4
+2022,EXAMPLE_RACE,Race (state-coded),1=White;2=Black;3=AIAN;4=Asian;5=NHPI;6=Other;7=Multiracial;9=Refused,5
+2022,EXAMPLE_HISP,Hispanic Ethnicity,1=Yes;2=No;9=Refused,6
+2022,EXAMPLE_ASTHMA,Ever told you have asthma,1=Yes;2=No;7=Don't know;9=Refused,7
+2022,_LLCPWT,Final survey weight,,8
+2022,_STSTR,Stratification weight,,9
+2022,_PSU,Primary sampling unit,,10
+2023,SEQNO,Annual Sequence Number,,1
+2023,_STATE,State FIPS Code,,2
+2023,GENHLTH,General Health,1=Excellent;2=Very good;3=Good;4=Fair;5=Poor;7=Don't know;9=Refused,3
+2023,EXAMPLE_AGE,Respondent Age (continuous),,4
+2023,EXAMPLE_RACE,Race (state-coded),1=White;2=Black;3=AIAN;4=Asian;5=NHPI;6=Other;7=Multiracial;9=Refused,5
+2023,EXAMPLE_HISP,Hispanic Ethnicity,1=Yes;2=No;9=Refused,6
+2023,EXAMPLE_ASTHMA,Ever told you have asthma,1=Yes;2=No;7=Don't know;9=Refused,7
+2023,EXAMPLE_DIABETES,Ever told you have diabetes,1=Yes;2=No (pre-diabetes);3=No (gestational only);4=No;7=Don't know;9=Refused,8
+2023,_LLCPWT,Final survey weight,,9
+2023,_STSTR,Stratification weight,,10
+2023,_PSU,Primary sampling unit,,11
+2024,SEQNO,Annual Sequence Number,,1
+2024,_STATE,State FIPS Code,,2
+2024,GENHLTH,General Health,1=Excellent;2=Very good;3=Good;4=Fair;5=Poor;7=Don't know;9=Refused,3
+2024,EXAMPLE_AGE,Respondent Age (continuous),,4
+2024,EXAMPLE_RACE_NEW,Race (renamed from EXAMPLE_RACE in 2024),1=White;2=Black;3=AIAN;4=Asian;5=NHPI;6=Other;7=Multiracial;9=Refused,5
+2024,EXAMPLE_HISP,Hispanic Ethnicity,1=Yes;2=No;9=Refused,6
+2024,EXAMPLE_ASTHMA,Ever told you have asthma,1=Yes;2=No;7=Don't know;9=Refused,7
+2024,EXAMPLE_DIABETES,Ever told you have diabetes,1=Yes;2=No (pre-diabetes);3=No (gestational only);4=No;7=Don't know;9=Refused,8
+2024,_LLCPWT,Final survey weight,,9
+2024,_STSTR,Stratification weight,,10
+2024,_PSU,Primary sampling unit,,11

@@ -88,6 +88,86 @@ that persists across package upgrades.
   logic now lives in YAML categorical maps under
   `transformations/race.yaml`.
 
+## Demographics-first workflow
+
+* **18 demographic templates ship with the package** under
+  `inst/extdata/transformations/templates/`, covering the BRFSS "big six":
+  age (6 variants), sex (3), race (2), ethnicity (2), education (2),
+  income (4). `brfss_setup_demographic(name, template)` copies a chosen
+  template into the user's `transformations/` folder, ready to use.
+* `brfss_list_demographic_templates()` shows what's available; filter
+  by `name` to see all templates for a single demographic.
+* `brfss_demographic_status()` reports a checklist of which big-six
+  demographics are configured.
+* New transformation type **`passthrough`**: takes a single input
+  column and renames it to the output column with no recoding. Used
+  by passthrough-style templates (e.g., `age__continuous`).
+
+## Year-aware transformations
+
+* The categorical-map runtime now supports `by_year:` blocks that
+  override `inputs:`, `levels:`, or both for specified year ranges.
+  This handles real BRFSS history: e.g., `INCOME2` (8 brackets, pre-2021)
+  vs `INCOME3` (11 brackets, 2021+) become a single unified `income`
+  column via `income__cdc_unified` template.
+* Templates with `by_year` shipped: `sex__birth_binary` (BIRTHSEX/SEX
+  fallback), `sex__selfreport_binary` (SEX/SEX1/SEXVAR transition),
+  `sex__gender_identity_4cat`, `income__cdc_unified`,
+  `income__quartiles`. Race uses CDC's stable `_MRACE1`/`_HISPANC` so
+  no by_year is needed for National data; the template documents
+  state-codebook overrides as commented-out examples.
+* Validator accepts levels-only-in-by_year: a transformation can
+  define different level coding per year range with no top-level
+  fallback.
+
+## Discoverability and recovery
+
+* `brfss_status()` prints a one-shot summary of where everything is:
+  config dir, state, files, transformations, registered pools, cache.
+  Run this any time you're not sure where the package is looking.
+* `brfss_reset()` wipes the config dir back to DEMO state, with
+  automatic timestamped backup of the previous config alongside.
+* `brfss_export_config(zip_path)` and `brfss_import_config(zip_path)`
+  bundle the config dir as a portable zip for moving work between
+  machines or sharing curated crosswalks.
+
+## CDC seed crosswalk
+
+* The package now ships `inst/extdata/cdc_seed.csv` (4,209 rows): every
+  CDC variable for every year 2012-2024, with `concept_id = cdc_var`,
+  `state_var = NA`, `unverified = 1`. By default `brfss_init_state()`
+  populates the user's `crosswalk.csv` from this seed; the user fills
+  in `state_var` for variables their state collects, then verifies.
+  Pass `seed_from_cdc = FALSE` for an empty start.
+* New `unverified` column on the crosswalk schema. `cw_load()`
+  back-fills this for legacy crosswalks loaded without it.
+* `cw_map_seeded(year, cdc_var, state_var)` is the workflow function
+  for assigning a state variable to a seeded row in one call (sets
+  state_var, source = "manual_edit", clears unverified).
+* `cw_verify_pair(year, state_var, cdc_var)` clears the unverified
+  flag without other changes.
+
+## DEMO replaces OR as shipped sample
+
+* No state-collected data ships with the package install. The shipped
+  sample is now `state = "DEMO"` — 15 fake variables over 3 years
+  using the `EXAMPLE_*` prefix. Real states require a user-supplied
+  `state_codebook_path` to `brfss_init_state()`.
+
+## Editor
+
+* Third tab added: **Demographics**. Shows the big-six checklist with
+  configured/not-configured status. "Set up" opens a modal with a
+  template picker; "Edit YAML" opens the file in the user's editor;
+  "Change template" replaces the YAML with a different choice;
+  "Remove" deletes with .bak rotation.
+* Editor renders crosswalk rows with `kind = "seeded"` distinct from
+  paired rows, with appropriate label ("CDC seed (unverified)" or
+  "CDC seed (verified, not mapped)").
+* `.cw_find()` semantics fixed: NA matches literal NA in a column;
+  pass NULL to skip filtering on that field. Previously NA was
+  ambiguously treated as "skip filtering".
+
 # brfssTools 0.0.0.9010
 
 ## Crosswalk migration

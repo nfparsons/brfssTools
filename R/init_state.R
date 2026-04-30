@@ -9,57 +9,84 @@
 
 #' Initialize a brfssTools config for a state
 #'
-#' Sets up `tools::R_user_dir("brfssTools", "config")` (or a custom path) with
-#' the files needed to use the crosswalk editor and `brfss_pull()`. After
-#' this runs once, all other brfssTools functions can find your state
+#' Sets up `tools::R_user_dir("brfssTools", "config")` (or a custom path)
+#' with the files needed to use the crosswalk editor and `brfss_pull()`.
+#' After this runs once, all other brfssTools functions can find your state
 #' codebook and crosswalk automatically.
 #'
 #' Two modes of operation:
 #'
-#' \strong{Sample state.} `brfss_init_state("OR")` copies the package's
-#' shipped Oregon sample (full crosswalk, state codebook, state_only,
-#' taxonomy) into the config dir as a starting point. Useful for trying the
-#' workflow or as a reference example.
+#' \strong{Demo state.} `brfss_init_state("DEMO")` copies a tiny example
+#' state codebook (~15 fake variables across 3 years) into the config dir,
+#' along with the seeded CDC crosswalk. Useful for trying the workflow,
+#' exploring the editor, or as a reference example.
 #'
-#' \strong{New state.} `brfss_init_state("WA", state_codebook_path = "...")`
-#' reads and validates the user-supplied state codebook, copies it in, and
-#' creates empty `crosswalk.csv` and `state_only.csv` files for the user to
-#' populate via the editor.
+#' \strong{Real state.} `brfss_init_state("OR", state_codebook_path = "...")`
+#' (or any other state code) reads and validates the user-supplied state
+#' codebook, copies it in, and seeds the crosswalk from the CDC reference.
 #'
-#' @param state Two-letter state postal code (used in config metadata only;
-#'   the crosswalk file is named `crosswalk.csv` regardless).
+#' \strong{The seeded crosswalk.} By default (`seed_from_cdc = TRUE`), the
+#' crosswalk starts pre-populated with one row per CDC variable per year
+#' (~4,200 rows across 2012-2024). Each seeded row has `state_var = NA`,
+#' `source = "cdc_seed"`, and `unverified = 1`. Your job is to walk
+#' through the crosswalk in the editor and:
+#' \enumerate{
+#'   \item Fill in the `state_var` for variables your state collects
+#'   \item Clear the `unverified` flag once you've confirmed the mapping
+#'   \item Add new rows for state-only variables
+#' }
+#' Pass `seed_from_cdc = FALSE` to start with a completely empty crosswalk.
+#'
+#' @param state Two-letter state postal code, or `"DEMO"` for the shipped
+#'   example. Used in config metadata; the crosswalk file is named
+#'   `crosswalk.csv` regardless of state.
 #' @param state_codebook_path Path to the user's state codebook CSV. Required
-#'   unless `state %in% sampled_states()`.
+#'   unless `state == "DEMO"`. The codebook must have at minimum the columns
+#'   `year`, `raw_var_name`, and `label`. See
+#'   [brfss_validate_state_codebook()] for full schema requirements.
 #' @param path Optional explicit config path. Defaults to
 #'   `tools::R_user_dir("brfssTools", "config")`.
 #' @param overwrite Logical. If FALSE (default), errors when the config dir
-#'   already exists. Set TRUE to clobber an existing config.
+#'   already exists and is non-empty. Set TRUE to clobber an existing
+#'   config. Use with caution: this REPLACES the current config dir.
+#' @param seed_from_cdc Logical. If TRUE (default), populate `crosswalk.csv`
+#'   with the shipped CDC seed (one row per CDC variable per year, all
+#'   marked `unverified = 1`). If FALSE, start with an empty crosswalk.
 #' @return The resolved config path, invisibly.
 #' @export
 #' @examples
 #' \dontrun{
-#' # Initialize using the package's shipped Oregon sample:
-#' brfss_init_state("OR")
+#' # Try out the workflow with the shipped demo:
+#' brfss_init_state("DEMO")
 #'
-#' # Initialize a new state with your own codebook:
+#' # Initialize a real state with your own codebook (CDC-seeded crosswalk):
 #' brfss_init_state(
-#'   state = "WA",
-#'   state_codebook_path = "~/data/wa_brfss_codebook.csv"
+#'   state = "OR",
+#'   state_codebook_path = "~/data/oregon_brfss_codebook.csv"
+#' )
+#'
+#' # Same, but with an empty crosswalk (no CDC seeding):
+#' brfss_init_state(
+#'   state = "OR",
+#'   state_codebook_path = "~/data/oregon_brfss_codebook.csv",
+#'   seed_from_cdc = FALSE
 #' )
 #'
 #' # Project-local config (for git-tracked epi projects):
 #' brfss_init_state(
-#'   state = "OR",
-#'   path = "~/projects/aces-paper/brfss_config"
+#'   state = "WA",
+#'   state_codebook_path = "~/data/wa_codebook.csv",
+#'   path  = "~/projects/aces-paper/brfss_config"
 #' )
 #' }
 brfss_init_state <- function(state,
                              state_codebook_path = NULL,
                              path = NULL,
-                             overwrite = FALSE) {
+                             overwrite = FALSE,
+                             seed_from_cdc = TRUE) {
   if (missing(state) || !is.character(state) || length(state) != 1L ||
       !nzchar(state)) {
-    stop("`state` must be a two-letter state postal code, e.g. \"OR\".",
+    stop("`state` must be a state postal code (e.g., \"OR\") or \"DEMO\".",
          call. = FALSE)
   }
   state <- toupper(state)
@@ -76,47 +103,45 @@ brfss_init_state <- function(state,
 
   dir.create(cfg, recursive = TRUE, showWarnings = FALSE)
 
-  is_sample_state <- state %in% sampled_states()
+  is_demo <- state == "DEMO"
 
-  if (!is_sample_state && is.null(state_codebook_path)) {
+  if (!is_demo && is.null(state_codebook_path)) {
     stop(
-      "State '", state, "' is not a built-in sample. ",
-      "Provide `state_codebook_path` pointing at your state's codebook CSV.\n",
-      "Built-in samples: ", paste(sampled_states(), collapse = ", "),
+      "State '", state, "' requires a `state_codebook_path` pointing at ",
+      "your state's codebook CSV.\n",
+      "To see the schema, try the demo first: ",
+      "brfss_init_state(\"DEMO\").",
       call. = FALSE
     )
   }
 
   pkg_extdata <- .brfss_package_extdata()
 
-  if (is_sample_state && is.null(state_codebook_path)) {
-    # Copy the package's shipped sample for this state.
-    .copy_sample_state(state, pkg_extdata, cfg)
-    msg <- sprintf("Initialized config for sample state '%s' from package data.", state)
-
+  if (is_demo) {
+    .copy_demo_state(pkg_extdata, cfg)
+    if (seed_from_cdc) {
+      .seed_crosswalk_from_cdc(pkg_extdata, cfg)
+      msg <- paste0(
+        "Initialized DEMO config with seeded CDC crosswalk. ",
+        "All CDC variables are present with state_var = NA and unverified = 1. ",
+        "Open the editor to start mapping your state codebook columns."
+      )
+    } else {
+      msg <- paste0(
+        "Initialized DEMO config with empty crosswalk. ",
+        "Pass seed_from_cdc = TRUE to start with all CDC variables pre-seeded."
+      )
+    }
   } else {
-    # User supplied a codebook. Validate, copy, init empty crosswalk + state_only.
     if (!file.exists(state_codebook_path)) {
       stop("state_codebook_path does not exist: ", state_codebook_path,
            call. = FALSE)
     }
-
     cb <- readr::read_csv(state_codebook_path, show_col_types = FALSE,
                           locale = readr::locale(encoding = "UTF-8"))
     cb <- brfss_validate_state_codebook(cb)
     readr::write_csv(cb, file.path(cfg, "state_codebook.csv"), na = "")
 
-    # Empty crosswalk + state_only with proper schemas
-    empty_cw <- tibble::tibble(
-      concept_id = character(),
-      year       = integer(),
-      state_var  = character(),
-      cdc_var    = character(),
-      is_primary = integer(),
-      source     = character(),
-      score      = numeric(),
-      notes      = character()
-    )
     empty_so <- tibble::tibble(
       concept_id = character(),
       year       = integer(),
@@ -124,21 +149,41 @@ brfss_init_state <- function(state,
       source     = character(),
       notes      = character()
     )
-    readr::write_csv(empty_cw, file.path(cfg, "crosswalk.csv"), na = "")
     readr::write_csv(empty_so, file.path(cfg, "state_only.csv"), na = "")
 
-    msg <- sprintf("Initialized empty config for state '%s'. Use brfss_crosswalk_editor() to map variables.", state)
+    if (seed_from_cdc) {
+      .seed_crosswalk_from_cdc(pkg_extdata, cfg)
+      msg <- sprintf(
+        "Initialized config for state '%s' with seeded CDC crosswalk. All CDC variables are present with state_var = NA and unverified = 1. Open brfss_crosswalk_editor() to map your state codebook columns.",
+        state
+      )
+    } else {
+      empty_cw <- tibble::tibble(
+        concept_id = character(),
+        year       = integer(),
+        state_var  = character(),
+        cdc_var    = character(),
+        is_primary = integer(),
+        source     = character(),
+        score      = numeric(),
+        notes      = character(),
+        unverified = integer()
+      )
+      readr::write_csv(empty_cw, file.path(cfg, "crosswalk.csv"), na = "")
+      msg <- sprintf(
+        "Initialized empty config for state '%s'. Open brfss_crosswalk_editor() to start mapping variables.",
+        state
+      )
+    }
   }
 
-  # Always ensure a transformations/ subdir exists for user functions
   dir.create(file.path(cfg, "transformations"),
              recursive = TRUE, showWarnings = FALSE)
 
-  # Stamp config.yaml
   config_yaml <- list(
     state = state,
     init_date = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
-    init_source = if (is_sample_state) "package_sample" else "user_codebook",
+    init_source = if (is_demo) "package_demo" else "user_codebook",
     state_codebook_source = if (!is.null(state_codebook_path))
                               normalizePath(state_codebook_path) else NA,
     package_version = as.character(utils::packageVersion("brfssTools"))
@@ -152,36 +197,56 @@ brfss_init_state <- function(state,
 
 #' States with a built-in sample shipped in the package
 #'
-#' @return Character vector of state postal codes.
+#' Currently only `"DEMO"` ships with the package. Real states require a
+#' user-supplied codebook via `state_codebook_path` in
+#' [brfss_init_state()].
+#'
+#' @return Character vector of state codes.
 #' @export
 sampled_states <- function() {
   pkg <- tryCatch(.brfss_package_extdata(), error = function(e) NULL)
   if (is.null(pkg)) return(character(0))
-  # Sample = a state for which we ship crosswalk + state_codebook + state_only
-  # Currently OR is hard-coded since that's what the package was built around.
-  if (file.exists(file.path(pkg, "crosswalk.csv")) &&
-      file.exists(file.path(pkg, "state_codebook.csv"))) {
-    return("OR")
+  if (file.exists(file.path(pkg, "state_codebook_demo.csv"))) {
+    return("DEMO")
   }
   character(0)
 }
 
-# Copy package-shipped sample state files into the config dir.
-.copy_sample_state <- function(state, pkg_extdata, cfg) {
-  # Currently OR is the only sample. If we ship others later (WA, etc.),
-  # this could look in inst/extdata/samples/<state>/ instead.
-  files_to_copy <- c(
-    "crosswalk.csv",
-    "state_codebook.csv",
-    "state_only.csv",
-    "pending.csv"
-  )
-  for (f in files_to_copy) {
-    src <- file.path(pkg_extdata, f)
-    if (file.exists(src)) {
-      file.copy(src, file.path(cfg, f), overwrite = TRUE)
-    }
+# Copy the package-shipped DEMO codebook into the config dir.
+# Note: does NOT write crosswalk.csv. The caller is expected to either
+# call .seed_crosswalk_from_cdc() or write an empty crosswalk explicitly.
+.copy_demo_state <- function(pkg_extdata, cfg) {
+  src <- file.path(pkg_extdata, "state_codebook_demo.csv")
+  dst <- file.path(cfg, "state_codebook.csv")
+  if (file.exists(src)) {
+    file.copy(src, dst, overwrite = TRUE)
+  } else {
+    stop("DEMO state codebook missing from package extdata. ",
+         "Reinstall brfssTools.", call. = FALSE)
   }
+
+  empty_so <- tibble::tibble(
+    concept_id = character(),
+    year       = integer(),
+    state_var  = character(),
+    source     = character(),
+    notes      = character()
+  )
+  readr::write_csv(empty_so, file.path(cfg, "state_only.csv"), na = "")
+
+  invisible(TRUE)
+}
+
+# Copy the shipped CDC seed crosswalk into the config dir as crosswalk.csv.
+# All rows ship with state_var = NA, source = "cdc_seed", unverified = 1.
+.seed_crosswalk_from_cdc <- function(pkg_extdata, cfg) {
+  src <- file.path(pkg_extdata, "cdc_seed.csv")
+  dst <- file.path(cfg, "crosswalk.csv")
+  if (!file.exists(src)) {
+    stop("CDC seed crosswalk missing from package extdata: ", src, "\n",
+         "Reinstall brfssTools.", call. = FALSE)
+  }
+  file.copy(src, dst, overwrite = TRUE)
   invisible(TRUE)
 }
 

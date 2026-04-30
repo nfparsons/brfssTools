@@ -1,0 +1,34 @@
+# Template: age (suicide surveillance groupings)
+#
+# Age groups commonly used in suicide surveillance reporting:
+# 10-14, 15-24, 25-44, 45-64, 65+.
+
+output_column: age
+type: categorical_map
+
+description: |
+  Suicide surveillance age groupings.
+  10-14, 15-24, 25-44, 45-64, 65+.
+
+inputs:
+  agecol: _AGE80
+
+levels:
+  - value: 1
+    label: "10-14"
+    when: agecol >= 10 & agecol <= 14
+  - value: 2
+    label: "15-24"
+    when: agecol >= 15 & agecol <= 24
+  - value: 3
+    label: "25-44"
+    when: agecol >= 25 & agecol <= 44
+  - value: 4
+    label: "45-64"
+    when: agecol >= 45 & agecol <= 64
+  - value: 5
+    label: "65+"
+    when: agecol >= 65 & agecol < 200
+  - value: 9
+    label: "Unknown / Refused"
+    when: TRUE

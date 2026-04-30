@@ -1,0 +1,37 @@
+# Template: age (SAMHSA / NSDUH groupings)
+#
+# Substance-use focused age groups used by SAMHSA's NSDUH:
+# 12-17 (youth), 18-25 (young adults), 26-34, 35-49, 50+.
+# The 12-17 youth group typically has no observations in BRFSS
+# (BRFSS is adult-only), but we keep the category for cross-survey
+# compatibility.
+
+output_column: age
+type: categorical_map
+
+description: |
+  SAMHSA / NSDUH age groupings.
+  12-17 youth (typically 0 in BRFSS), 18-25, 26-34, 35-49, 50+.
+
+inputs:
+  agecol: _AGE80
+
+levels:
+  - value: 1
+    label: "12-17"
+    when: agecol >= 12 & agecol <= 17
+  - value: 2
+    label: "18-25"
+    when: agecol >= 18 & agecol <= 25
+  - value: 3
+    label: "26-34"
+    when: agecol >= 26 & agecol <= 34
+  - value: 4
+    label: "35-49"
+    when: agecol >= 35 & agecol <= 49
+  - value: 5
+    label: "50+"
+    when: agecol >= 50 & agecol < 200
+  - value: 9
+    label: "Unknown / Refused"
+    when: TRUE

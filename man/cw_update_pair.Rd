@@ -13,7 +13,8 @@ cw_update_pair(
   is_primary = NULL,
   source = NULL,
   score = NULL,
-  notes = NULL
+  notes = NULL,
+  unverified = NULL
 )
 }
 \arguments{

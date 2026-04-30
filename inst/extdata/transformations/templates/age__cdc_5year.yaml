@@ -1,0 +1,56 @@
+# Template: age (5-year groups, CDC 13-category)
+#
+# 5-year groupings: 18-24, 25-29, 30-34, ..., 75-79, 80+.
+
+output_column: age
+type: categorical_map
+
+description: |
+  Five-year age groupings: 18-24, 25-29, ..., 75-79, 80+.
+
+inputs:
+  agecol: _AGE80
+
+levels:
+  - value: 1
+    label: "18-24"
+    when: agecol >= 18 & agecol <= 24
+  - value: 2
+    label: "25-29"
+    when: agecol >= 25 & agecol <= 29
+  - value: 3
+    label: "30-34"
+    when: agecol >= 30 & agecol <= 34
+  - value: 4
+    label: "35-39"
+    when: agecol >= 35 & agecol <= 39
+  - value: 5
+    label: "40-44"
+    when: agecol >= 40 & agecol <= 44
+  - value: 6
+    label: "45-49"
+    when: agecol >= 45 & agecol <= 49
+  - value: 7
+    label: "50-54"
+    when: agecol >= 50 & agecol <= 54
+  - value: 8
+    label: "55-59"
+    when: agecol >= 55 & agecol <= 59
+  - value: 9
+    label: "60-64"
+    when: agecol >= 60 & agecol <= 64
+  - value: 10
+    label: "65-69"
+    when: agecol >= 65 & agecol <= 69
+  - value: 11
+    label: "70-74"
+    when: agecol >= 70 & agecol <= 74
+  - value: 12
+    label: "75-79"
+    when: agecol >= 75 & agecol <= 79
+  - value: 13
+    label: "80+"
+    when: agecol >= 80 & agecol < 200
+  - value: 99
+    label: "Unknown / Refused"
+    when: TRUE

@@ -1,0 +1,67 @@
+# Template: race (CDC _RACE 9-category)
+#
+# CDC's standard 9-category race + Hispanic. Combines _MRACE1 (multi-race
+# indicator) with _HISPANC (Hispanic ethnicity). The CDC variable names
+# `_MRACE1` and `_HISPANC` have been stable across BRFSS LLCP files from
+# 2012 through 2024, and the response codes haven't changed either, so a
+# single levels block covers all years for National data.
+#
+# STATE USERS: your state codebook likely uses different column names
+# (e.g., Oregon: MRACE1_* and HISPANC3_* 2017-2021, MRACE2_* and
+# HISPANC3_0* 2022-2024). Add by_year overrides at the bottom of this
+# file to reflect your state's column names per year. Example included.
+
+output_column: race
+type: categorical_map
+
+description: |
+  CDC _RACE: 7 NH single-race categories + Hispanic + don't-know/refused.
+
+inputs:
+  mrace: _MRACE1
+  hisp:  _HISPANC
+
+levels:
+  - value: 1
+    label: "White only, NH"
+    when: mrace == 1 & hisp == 2
+  - value: 2
+    label: "Black only, NH"
+    when: mrace == 2 & hisp == 2
+  - value: 3
+    label: "AIAN only, NH"
+    when: mrace == 3 & hisp == 2
+  - value: 4
+    label: "Asian only, NH"
+    when: mrace == 4 & hisp == 2
+  - value: 5
+    label: "NHPI only, NH"
+    when: mrace == 5 & hisp == 2
+  - value: 6
+    label: "Other race only, NH"
+    when: mrace == 6 & hisp == 2
+  - value: 7
+    label: "Multiracial, NH"
+    when: mrace == 7 & hisp == 2
+  - value: 8
+    label: "Hispanic"
+    when: hisp == 1
+  - value: 9
+    label: "Don't know / Not sure / Refused"
+    when: hisp == 9 | (mrace %in% c(77, 99) & hisp == 2)
+
+# ---- by_year overrides ----
+# Uncomment and adapt for state codebooks where column names change by year.
+# A by_year block can override `inputs:`, `levels:`, or both. If only inputs
+# are overridden, the top-level levels still apply (the codes match).
+# If a state uses different code values per era, override levels too.
+#
+# by_year:
+#   "2017-2021":
+#     inputs:
+#       mrace: MRACE1_RACE       # state-specific column name
+#       hisp:  HISPANC3
+#   "2022-2024":
+#     inputs:
+#       mrace: MRACE2_RACE
+#       hisp:  HISPANC3_01

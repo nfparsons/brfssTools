@@ -1,0 +1,24 @@
+# Template: age (binary 65+)
+#
+# Two categories: under 65, 65+. Useful for older-adult focused
+# analyses or as a stratification variable.
+
+output_column: age
+type: categorical_map
+
+description: |
+  Binary age: under 65, 65 and over.
+
+inputs:
+  agecol: _AGE80
+
+levels:
+  - value: 0
+    label: "Under 65"
+    when: agecol >= 18 & agecol < 65
+  - value: 1
+    label: "65 and over"
+    when: agecol >= 65 & agecol < 200
+  - value: 9
+    label: "Unknown / Refused"
+    when: TRUE

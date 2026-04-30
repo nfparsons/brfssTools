@@ -1,0 +1,18 @@
+# Template: age (continuous, passthrough)
+#
+# Use when you want age as numeric for regression or your own binning.
+# CDC's _AGE80 topcodes at 80 (ages 80+ collapsed). Adjust `inputs:` if
+# your codebook uses a different name (e.g. `AGE` for state files).
+#
+# Note: this template uses passthrough, so output column `age` is just
+# a copy of `_AGE80`. Refused/don't-know codes (7, 9, 99) come through
+# as those numeric values; recode to NA in your analysis if needed.
+
+output_column: age
+type: passthrough
+
+description: |
+  Continuous age. Passthrough of CDC's _AGE80 (topcoded at 80).
+
+inputs:
+  age: _AGE80
