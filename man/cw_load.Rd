@@ -2,27 +2,21 @@
 % Please edit documentation in R/crosswalk_io.R
 \name{cw_load}
 \alias{cw_load}
-\title{Load the crosswalk bundle from disk}
+\title{Load the crosswalk bundle}
 \usage{
 cw_load(path = NULL)
 }
 \arguments{
-\item{path}{Optional config dir override. Default uses \code{brfss_config_path()}.}
+\item{path}{Optional config dir override.}
 }
 \value{
-A list of tibbles describing the crosswalk and its supporting data.
+A list with elements \code{crosswalk}, \code{cdc_codebook},
+\code{state_codebook}, \code{taxonomy}, \code{cdc_calculated_vars},
+\code{.path}.
 }
 \description{
-Reads the crosswalk and supporting files from the resolved config path.
-By default uses the path resolver (\code{brfss_config_path()}); pass an
-explicit \verb{path =} to override.
-}
-\details{
-Files split between package extdata and user config:
-\itemize{
-\item Always from package: \code{cdc_codebook.csv}, \code{cdc_calculated_vars.csv},
-\code{cdc_only.csv}, \code{taxonomy.csv} (unless user has local overrides).
-\item Always from config dir: \code{crosswalk.csv}, \code{state_codebook.csv},
-\code{state_only.csv}, \code{pending.csv}.
-}
+Reads the crosswalk and reference data (CDC codebook, state codebook,
+taxonomy) from the config dir and package extdata. Returns a list
+bundle. Mutates only \code{$crosswalk}; everything else is read-only
+reference data.
 }

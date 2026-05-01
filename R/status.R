@@ -54,22 +54,9 @@ brfss_status <- function(path = NULL) {
     config_files <- list(
       crosswalk      = file_summary(file.path(cfg, "crosswalk.csv")),
       state_codebook = file_summary(file.path(cfg, "state_codebook.csv")),
-      state_only     = file_summary(file.path(cfg, "state_only.csv")),
-      pending        = file_summary(file.path(cfg, "pending.csv")),
       config_yaml    = file_summary(file.path(cfg, "config.yaml"),
                                      count_rows = FALSE)
     )
-  }
-
-  # Transformations
-  trans <- list()
-  if (cfg_exists) {
-    trans_dir <- file.path(cfg, "transformations")
-    if (dir.exists(trans_dir)) {
-      trans_files <- list.files(trans_dir, pattern = "\\.(R|yaml|yml)$",
-                                ignore.case = TRUE)
-      trans <- trans_files
-    }
   }
 
   # Registered pools
@@ -123,17 +110,10 @@ brfss_status <- function(path = NULL) {
     cat("  (n/a)\n")
   }
 
-  cat("\nTransformations:\n")
-  if (length(trans) == 0L) {
-    cat("  (none)\n")
-  } else {
-    for (f in trans) cat("  ", f, "\n", sep = "")
-  }
-
   cat("\nRegistered data pools:\n")
   if (length(pool_summary) == 1L && pool_summary == "(none registered)") {
     cat("  (none registered)\n")
-    cat("  Use brfss_set_pool() or brfss_download() to register.\n")
+    cat("  Use brfss_set_pool() to register.\n")
   } else {
     for (s in pool_summary) cat("  ", s, "\n", sep = "")
   }
@@ -152,7 +132,6 @@ brfss_status <- function(path = NULL) {
     state        = state,
     init_date    = init_date,
     config_files = config_files,
-    transformations = trans,
     pools        = pool_status,
     cache_dir    = cache_dir,
     cache_n_files = cache_n_files

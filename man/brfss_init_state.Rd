@@ -9,86 +9,45 @@ brfss_init_state(
   state_codebook_path = NULL,
   path = NULL,
   overwrite = FALSE,
-  seed_from_cdc = TRUE
+  draft = FALSE
 )
 }
 \arguments{
-\item{state}{Two-letter state postal code, or \code{"DEMO"} for the shipped
-example. Used in config metadata; the crosswalk file is named
-\code{crosswalk.csv} regardless of state.}
+\item{state}{Two-letter state postal code or "DEMO".}
 
-\item{state_codebook_path}{Path to the user's state codebook CSV. Required
-unless \code{state == "DEMO"}. The codebook must have at minimum the columns
-\code{year}, \code{raw_var_name}, and \code{label}. See
-\code{\link[=brfss_validate_state_codebook]{brfss_validate_state_codebook()}} for full schema requirements.}
+\item{state_codebook_path}{Path to the state's codebook CSV. Required
+unless \code{state == "DEMO"}.}
 
 \item{path}{Optional explicit config path. Defaults to
 \code{tools::R_user_dir("brfssTools", "config")}.}
 
-\item{overwrite}{Logical. If FALSE (default), errors when the config dir
-already exists and is non-empty. Set TRUE to clobber an existing
-config. Use with caution: this REPLACES the current config dir.}
+\item{overwrite}{Logical. If FALSE (default), errors when the config
+dir already exists and is non-empty.}
 
-\item{seed_from_cdc}{Logical. If TRUE (default), populate \code{crosswalk.csv}
-with the shipped CDC seed (one row per CDC variable per year, all
-marked \code{unverified = 1}). If FALSE, start with an empty crosswalk.}
+\item{draft}{Logical. If TRUE, calls \code{brfss_draft_crosswalk()}
+after the config is initialized. Requires a pool to be registered
+first via \code{brfss_set_pool()}. Default FALSE.}
 }
 \value{
 The resolved config path, invisibly.
 }
 \description{
-Sets up \code{tools::R_user_dir("brfssTools", "config")} (or a custom path)
-with the files needed to use the crosswalk editor and \code{brfss_pull()}.
-After this runs once, all other brfssTools functions can find your state
-codebook and crosswalk automatically.
-}
-\details{
-Two modes of operation:
-
-\strong{Demo state.} \code{brfss_init_state("DEMO")} copies a tiny example
-state codebook (~15 fake variables across 3 years) into the config dir,
-along with the seeded CDC crosswalk. Useful for trying the workflow,
-exploring the editor, or as a reference example.
-
-\strong{Real state.} \code{brfss_init_state("OR", state_codebook_path = "...")}
-(or any other state code) reads and validates the user-supplied state
-codebook, copies it in, and seeds the crosswalk from the CDC reference.
-
-\strong{The seeded crosswalk.} By default (\code{seed_from_cdc = TRUE}), the
-crosswalk starts pre-populated with one row per CDC variable per year
-(~4,200 rows across 2012-2024). Each seeded row has \code{state_var = NA},
-\code{source = "cdc_seed"}, and \code{unverified = 1}. Your job is to walk
-through the crosswalk in the editor and:
-\enumerate{
-\item Fill in the \code{state_var} for variables your state collects
-\item Clear the \code{unverified} flag once you've confirmed the mapping
-\item Add new rows for state-only variables
-}
-Pass \code{seed_from_cdc = FALSE} to start with a completely empty crosswalk.
+Sets up the user config directory: validates and copies in the state
+codebook, creates an empty crosswalk, sets up metadata. With
+\code{draft = TRUE}, immediately drafts the crosswalk from your
+registered data pool's most recent year.
 }
 \examples{
 \dontrun{
-# Try out the workflow with the shipped demo:
+# Try the demo workflow:
 brfss_init_state("DEMO")
 
-# Initialize a real state with your own codebook (CDC-seeded crosswalk):
+# Real state, draft crosswalk in one step:
+brfss_set_pool("OR", "Z:/Secure_Data/Oregon_BRFSS")
 brfss_init_state(
-  state = "OR",
-  state_codebook_path = "~/data/oregon_brfss_codebook.csv"
-)
-
-# Same, but with an empty crosswalk (no CDC seeding):
-brfss_init_state(
-  state = "OR",
-  state_codebook_path = "~/data/oregon_brfss_codebook.csv",
-  seed_from_cdc = FALSE
-)
-
-# Project-local config (for git-tracked epi projects):
-brfss_init_state(
-  state = "WA",
-  state_codebook_path = "~/data/wa_codebook.csv",
-  path  = "~/projects/aces-paper/brfss_config"
+  state               = "OR",
+  state_codebook_path = "~/data/oregon_codebook.csv",
+  draft               = TRUE
 )
 }
 }

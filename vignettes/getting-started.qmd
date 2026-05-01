@@ -1,0 +1,290 @@
+---
+title: "Getting started with brfssTools"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+---
+
+```{r}
+#| include: false
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  eval     = FALSE
+)
+```
+
+
+This vignette walks an analyst with state-collected BRFSS files through
+the brfssTools workflow, from a fresh install to a tidy crosswalk ready
+for use. The code is not executed at vignette build time — run the
+chunks yourself against your real machine and your real data.
+
+## What this package solves
+
+The Behavioral Risk Factor Surveillance System (BRFSS) collects health
+data the same way every year, but the *files* don't reflect that
+sameness. Column names change. Response codes shift. New modules
+appear, old ones retire. Variables get renamed (`SEX1` → `SEXVAR`),
+calculated variables get rewritten (`INCOME2` becomes `INCOME3` with
+a different bracket structure), and within a single state, multi-year
+analyses end up requiring a per-year dictionary you maintain by hand.
+
+brfssTools is that dictionary, but as a structured tool: an editable
+crosswalk that maps each conceptual variable to its actual column name
+in each year's data file, with support for cells that need to be
+*calculated* from other columns (for example, when CDC changed how race
+was coded mid-decade, you can write a small inline expression for
+2017-2021 and a different one for 2022-2024).
+
+The crosswalk is **anchored on your most recent year of data**. The
+package reads your latest year's variable list, treats each variable
+as a "concept," and builds a draft crosswalk for you to fill in
+backwards. You handle older years via dropdowns or inline calculations.
+Domain assignment is pre-filled where the package can match against
+CDC's own variable naming, and left blank ("Unassigned") for review
+otherwise.
+
+## 1. Install
+
+```r
+# install.packages("pak")
+pak::pak("nfparsons/brfssTools")
+```
+
+## 2. Register your data files
+
+Point the package at the directory containing your state's BRFSS
+files. Files can be `.csv` or `.xpt`; year is auto-detected from the
+filename (or from the `SEQNO` column as a fallback).
+
+```r
+library(brfssTools)
+
+brfss_set_pool("OR", "Z:/Secure_Data/Oregon_BRFSS")
+#> Scanning pool for dataset 'OR'...
+#> Indexed 13 file(s) for dataset 'OR'.
+
+brfss_pool_status()
+```
+
+The pool registration is session-scoped (re-run on each R session).
+Most analysts wrap this in a `.Rprofile` or a project setup script.
+
+## 3. Initialize a config and draft the crosswalk
+
+The config directory holds your crosswalk and state codebook. It lives
+separately from the package install and persists across upgrades.
+
+```r
+brfss_init_state(
+  state               = "OR",
+  state_codebook_path = "~/data/oregon_codebook.csv",
+  draft               = TRUE
+)
+```
+
+With `draft = TRUE`, this:
+
+1. Validates and copies in your state codebook
+2. Reads the most recent year's data file from the registered pool
+3. Creates one concept per variable in that year
+4. Adds rows for all earlier years with `state_var = NA` (awaiting your
+   mapping)
+5. Auto-assigns domains where it can match against the CDC reference
+
+Confirm everything's set up:
+
+```r
+brfss_status()
+#>
+#> brfssTools status
+#> -----------------
+#>
+#> Config directory:
+#>   C:/Users/.../AppData/Roaming/R/config/R/brfssTools
+#>   state:       OR
+#>
+#> Config files:
+#>   crosswalk          1872 rows  (147.0 KB)
+#>   state_codebook     5120 rows  (412.8 KB)
+#>
+#> Registered data pools:
+#>   OR (13 files, years 2012-2024)
+```
+
+## 4. Edit the crosswalk
+
+Open the editor:
+
+```r
+brfss_crosswalk_editor()
+```
+
+The editor has three panes:
+
+- **Left**: domains, with concept counts. "Unassigned" is pinned at
+  the bottom — these are concepts whose domain couldn't be auto-matched
+  and need your review.
+- **Center**: a heatmap for the selected domain. Rows are concepts;
+  columns are years; cells show mapping status:
+  - 🟢 mapped + verified
+  - 🟡 mapped, unverified
+  - ⚪ unmapped
+  - 🔵 calculated
+  - ⚫ unassigned domain (not editable)
+- **Right**: edit panel for the selected cell.
+
+### Per-cell mapping
+
+Click a cell. The right panel shows a searchable dropdown of that
+year's variables (filtered to exclude variables already used by other
+concepts in the same year). Pick one, click **Save**.
+
+```
+Concept    PHYSHLTH      [Rename] [Merge…] [Delete]
+Year       2018
+Domain     Behavioral Health · Healthy Days
+─────────
+[ ] Calculated
+
+state_var (from 2018 codebook):
+[ PHYSHLTH                            ▼ ]   ← type to search
+
+[Save] [Verify] [Clear]
+```
+
+### Per-cell calculation
+
+When a concept needs to be derived from multiple columns (for example,
+race calculated from `_MRACE1` and `_HISPANC`) check the **Calculated**
+box. The dropdown is replaced with a YAML editor:
+
+```yaml
+type: categorical_map
+
+inputs:
+  mrace: _MRACE1
+  hisp: _HISPANC
+
+levels:
+  - value: 1
+    label: "White only, NH"
+    when: mrace == 1 & hisp == 2
+  - value: 2
+    label: "Black only, NH"
+    when: mrace == 2 & hisp == 2
+  - value: 8
+    label: "Hispanic"
+    when: hisp == 1
+  - value: 9
+    label: "Refused/Don't know"
+    when: TRUE
+```
+
+Calculations are stored **per-cell**. The same concept can be a column
+lookup in 2024 and a calculated cell in 2018 — useful for handling
+year-by-year structural changes in CDC's coding.
+
+### Concept-level actions
+
+The right panel header has three buttons next to the concept name:
+
+- **Rename**: change the concept name across all years (validates
+  R-friendly naming).
+- **Merge…**: move this concept's mappings into another concept, then
+  delete this one. Errors if both concepts have a non-empty mapping for
+  the same year (you have to manually resolve before merging).
+- **Delete**: remove the concept and all its rows. Confirmation
+  warning if mappings would be lost.
+
+### Unassigned concepts
+
+The Unassigned section shows concepts as a list (not a heatmap), each
+with an "Assign domain..." button. Until you assign a domain, the
+concept's cells aren't editable. Once assigned, the concept moves to
+its proper domain section and becomes editable.
+
+### Save
+
+Edits are kept in memory until you click **Save** in the header.
+That writes to disk with a `.bak` rotation. **Reload** discards
+in-memory changes.
+
+## 5. Sharing or moving your work
+
+Your crosswalk lives in your user config directory. To move it to
+another machine, archive it, or share with a collaborator:
+
+```r
+brfss_export_config("~/oregon_crosswalk_2026-05-01.zip")
+# On the destination:
+brfss_import_config("~/oregon_crosswalk_2026-05-01.zip")
+```
+
+To start fresh while keeping a backup:
+
+```r
+brfss_reset()
+# Backs up current config to a timestamped folder, reinits to DEMO.
+```
+
+## 6. Adding new years
+
+When a new year of data arrives, drop the file into your pool directory
+and run:
+
+```r
+brfss_redraft_crosswalk()
+```
+
+This is idempotent: existing concepts and mappings survive, but:
+
+- New rows are added for any new years not already represented
+- New concepts are created for variables in the new year that don't
+  already exist in the crosswalk
+
+You then go into the editor and fill in the new cells / assign
+domains to the new concepts.
+
+## Migrating from v0.1.0
+
+If you have a brfssTools v0.1.0 crosswalk:
+
+```r
+brfss_migrate_crosswalk_to_v2(dry_run = TRUE)
+# Inspect the migration result without writing.
+
+brfss_migrate_crosswalk_to_v2()
+# Commits the migration. Backs up v0.1.0 crosswalk to crosswalk.csv.v01.bak.
+```
+
+The migration drops the `cdc_var`, `is_primary`, `source`, and `score`
+columns; adds `is_calculated`, `calculation_yaml`, `domain`, and
+`subdomain`; auto-assigns domains where possible; and treats existing
+mapped rows as user-confirmed (sets `unverified = 0`).
+
+After migrating you'll likely want to clean up CDC's year-versioned
+variable groups (e.g., `ADDEPEV2` and `ADDEPEV3` as separate concepts,
+when conceptually they're the same thing). The editor's **Merge…**
+button is the cleanest path: click an `ADDEPEV2` cell, click Merge…,
+pick `ADDEPEV3` as the target, then optionally rename the result to
+something cleaner (`ADDEPEV` or `DEPRESSION`).
+
+## Troubleshooting
+
+**`No pool registered for dataset 'OR'`** — re-run `brfss_set_pool()`.
+Pool registration is session-scoped.
+
+**Editor opens but the heatmap is empty** — your crosswalk has zero
+rows. Run `brfss_draft_crosswalk()` (with a pool registered) to draft
+from your data.
+
+**Editor shows v0.1.0 schema error** — your crosswalk predates the
+v0.2.0 schema. Run `brfss_migrate_crosswalk_to_v2()`.
+
+**A merge fails with "Cannot merge: both concepts have mappings for
+year X"** — both concepts have non-empty mappings for the same year.
+Decide which one is correct, clear the wrong one (Clear button in the
+edit panel), then retry the merge.

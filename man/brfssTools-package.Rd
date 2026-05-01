@@ -7,29 +7,29 @@
 \title{brfssTools: Harmonize Longitudinal BRFSS Survey Data}
 \description{
 Tools for harmonizing the Behavioral Risk Factor Surveillance System
-(BRFSS) survey data across years and across sources (national CDC LLCP
-files plus state-collected files), where variable names, response codes,
-and question text drift between waves.
+(BRFSS) survey data across years.
 }
 \details{
-brfssTools provides a \code{tidycensus}-style workflow built around a
-user-editable crosswalk. Initialize a state config, register a pool of
-raw data files, edit the crosswalk via an interactive Shiny GUI, set up
-declarative transformations for derived variables like race, and pull
-harmonized concepts as a tidy tibble. State and CDC data live behind a
-single \code{concept_id} addressing system: different state variables across
-years can share a \code{concept_id} (e.g., \code{ACEHURT1}/\code{ACEHURT2}/\code{ACEHURT3}
-all collapse to \code{ACEHURT}), and \code{brfss_pull("ACEHURT")} resolves to the
-right per-year column automatically.
+The crosswalk is anchored on \strong{the user's most recent year of
+data}. A draft function reads the variable list from the most recent
+year's data file and produces a starting crosswalk where each variable
+becomes a \code{concept_id}; the user fills in equivalents for older
+years via the editor; cells can be flagged \code{is_calculated = 1}
+to store inline YAML defining a year-specific computation. Domain
+assignment is pre-filled where possible from the shipped CDC codebook
+reference and left as \code{"Unassigned"} otherwise.
 }
 \section{Getting started}{
 
-New users should start with one of the workflow vignettes:
-\itemize{
-\item \code{vignette("state-data-workflow")} — for analysts with state-collected
-BRFSS files.
-\item \code{vignette("national-data-workflow")} — for analysts using only CDC's
-public LLCP files via \code{\link[=brfss_download]{brfss_download()}}.
+New users should follow this order:
+\enumerate{
+\item Register a data pool: \code{\link[=brfss_set_pool]{brfss_set_pool()}} (state) or
+\code{\link[=brfss_download]{brfss_download()}} (National).
+\item Initialize a config: \code{\link[=brfss_init_state]{brfss_init_state()}}. Pass
+\code{draft = TRUE} to draft the crosswalk in the same call.
+\item Open the editor: \code{\link[=brfss_crosswalk_editor]{brfss_crosswalk_editor()}} to fill in older
+years and assign domains to Unassigned concepts.
+\item Pull data: \code{\link[=brfss_pull]{brfss_pull()}}.
 }
 }
 
@@ -37,52 +37,56 @@ public LLCP files via \code{\link[=brfss_download]{brfss_download()}}.
 
 \itemize{
 \item \code{\link[=brfss_init_state]{brfss_init_state()}} — scaffold a user config directory.
-\item \code{\link[=brfss_set_pool]{brfss_set_pool()}} / \code{\link[=brfss_download]{brfss_download()}} — register a directory of raw
-data files (state) or fetch CDC's public files (national).
+\item \code{\link[=brfss_set_pool]{brfss_set_pool()}} / \code{\link[=brfss_download]{brfss_download()}} — register raw data files.
 \item \code{\link[=brfss_config_path]{brfss_config_path()}} — show the active config directory.
+\item \code{\link[=brfss_status]{brfss_status()}} — print where everything lives.
+\item \code{\link[=brfss_reset]{brfss_reset()}} — wipe back to a clean state, with backup.
+\item \code{\link[=brfss_export_config]{brfss_export_config()}} / \code{\link[=brfss_import_config]{brfss_import_config()}} — move work
+between machines.
+}
+}
+
+\section{Drafting and migrating crosswalks}{
+
+\itemize{
+\item \code{\link[=brfss_draft_crosswalk]{brfss_draft_crosswalk()}} — read the most recent year's variables
+from the registered pool, produce a draft crosswalk.
+\item \code{\link[=brfss_redraft_crosswalk]{brfss_redraft_crosswalk()}} — idempotent extend; adds new years
+and new variables without overwriting existing mappings.
+\item \code{\link[=brfss_migrate_crosswalk_to_v2]{brfss_migrate_crosswalk_to_v2()}} — one-shot upgrade of a
+v0.1.0 crosswalk to v0.2.0 schema.
 }
 }
 
 \section{Editing the crosswalk}{
 
 \itemize{
-\item \code{\link[=brfss_crosswalk_editor]{brfss_crosswalk_editor()}} — interactive Shiny GUI (CDC-anchored or
-state-anchored heatmap, edit panel, bulk concept rename).
-\item \code{\link[=cw_load]{cw_load()}}, \code{\link[=cw_save]{cw_save()}} — load and save the crosswalk bundle from
-the console.
-\item \code{\link[=cw_add_pair]{cw_add_pair()}}, \code{\link[=cw_remove_pair]{cw_remove_pair()}}, \code{\link[=cw_update_pair]{cw_update_pair()}},
-\code{\link[=cw_mark_state_only]{cw_mark_state_only()}}, \code{\link[=cw_mark_cdc_only]{cw_mark_cdc_only()}},
-\code{\link[=cw_replace_cdc_partner]{cw_replace_cdc_partner()}}, \code{\link[=cw_replace_state_partner]{cw_replace_state_partner()}},
-\code{\link[=cw_rename_concept]{cw_rename_concept()}}, \code{\link[=cw_recompute_concept_ids]{cw_recompute_concept_ids()}} — programmatic
-crosswalk CRUD.
-\item \code{\link[=brfss_search]{brfss_search()}}, \code{\link[=brfss_lookup]{brfss_lookup()}} — explore the crosswalk and
-codebooks.
+\item \code{\link[=brfss_crosswalk_editor]{brfss_crosswalk_editor()}} — Shiny GUI.
+\item \code{\link[=cw_load]{cw_load()}}, \code{\link[=cw_save]{cw_save()}} — load and save from the console.
+\item \code{\link[=cw_set_var]{cw_set_var()}} — set a state variable for a (concept, year) cell.
+\item \code{\link[=cw_set_calc]{cw_set_calc()}} — flag a cell as calculated and provide YAML.
+\item \code{\link[=cw_assign_domain]{cw_assign_domain()}} — assign a concept to a domain/subdomain.
+\item \code{\link[=cw_verify]{cw_verify()}} — clear the unverified flag on a cell.
+\item \code{\link[=cw_rename_concept]{cw_rename_concept()}} — rename a concept across all its rows.
+\item \code{\link[=cw_add_concept]{cw_add_concept()}} / \code{\link[=cw_remove_concept]{cw_remove_concept()}} — concept-level CRUD.
 }
 }
 
-\section{Transformations (derived variables)}{
+\section{Reference}{
 
-Two systems for variables that don't map cleanly to a single column.
-Declarative YAML categorical maps are preferred for typical recodes;
-functional \code{.R} files are the escape hatch for anything YAML can't
-express.
 \itemize{
-\item \code{\link[=brfss_setup_categorical_map]{brfss_setup_categorical_map()}}, \code{\link[=brfss_setup_race_map]{brfss_setup_race_map()}} — declarative
-YAML.
-\item \code{\link[=brfss_setup_transformation]{brfss_setup_transformation()}}, \code{\link[=brfss_setup_race]{brfss_setup_race()}} — functional
-\code{.R}.
-\item \code{\link[=brfss_load_categorical_map]{brfss_load_categorical_map()}},
-\code{\link[=brfss_render_transformation_code]{brfss_render_transformation_code()}},
-\code{\link[=brfss_list_transformations]{brfss_list_transformations()}} — utilities.
+\item \code{\link[=brfss_assign_domains]{brfss_assign_domains()}} — domain auto-assignment via CDC codebook.
+\item \code{\link[=sanitize_concept_id]{sanitize_concept_id()}} — make a variable name R-friendly.
 }
 }
 
 \section{Pulling data}{
 
 \itemize{
-\item \code{\link[=brfss_pull]{brfss_pull()}} — the workhorse. Accepts \code{concepts}, \code{domains}, \code{tags},
-plus \code{years} and \code{states}. Auto-detects state vs. CDC source from
-registered pools. Applies your transformations per year.
+\item \code{\link[=brfss_pull]{brfss_pull()}} — the workhorse. Accepts \code{concepts},
+\code{years}; resolves each cell as a column lookup or YAML eval.
+(Note: in v0.2.0.9000, pull has not yet been updated for the new
+schema; see the redesign spec for status.)
 }
 }
 

@@ -1,139 +1,135 @@
 # brfssTools — Backlog
 
-The previous (pre-0.1.0) TODO is preserved as
-`TODO-archive-pre-0.1.0.md`. This file reflects work remaining as of
-end-of-session April 30, 2026.
+Status: v0.2.0 shipped May 1, 2026. The previous TODO archives are
+preserved as `TODO-archive-pre-0.1.0.md` and (covering the 0.1.0
+to 0.2.0 transition) the v0.1.0 entries in NEWS.md.
 
 ---
 
-## 1. Editor: structured by_year UI (priority next session)
+## 1. Stage D: brfss_pull for v0.2.0 schema
 
-The runtime supports `by_year:` blocks that override `inputs:` and
-`levels:` per year range. The editor's "Edit YAML" button currently
-sends users to their system editor to write these by hand. The next
-pass should provide a structured GUI:
+The v0.1.0 `brfss_pull()` was tightly coupled to `cdc_var` /
+`is_primary` / `source` and the separate `transformations/` folder.
+For v0.2.0 it needs:
 
-- [ ] Demographics tab → click Edit on a configured demographic →
-  opens a structured form (not the file editor)
-- [ ] Form has a default-block panel (inputs alias picker, levels table)
-- [ ] "+ Add year-range override" button creates a new collapsible
-  section with its own inputs and levels editor
-- [ ] Levels table supports add/remove rows, drag-to-reorder, and
-  inline editing of value/label/when
-- [ ] Save writes the YAML; optionally renders companion .R
-
-Estimated: 2-3 sessions of focused Shiny work.
-
----
-
-## 2. Pass 2: CDC calculated-variables crosswalk
-
-`inst/extdata/cdc_calculated_vars.csv` (1,214 rows) sits ready. These
-are CDC's `_RACE`, `_AGE65YR`, `_BMI5CAT`, `_RFHLTH`, etc.
-
-- [ ] Audit each calc var: does it already exist in the crosswalk?
-- [ ] Add new concept_ids for unmapped calc vars
-- [ ] Crosswalk year-by-year (most are CDC-stable)
-
-Estimated: 1-2 days.
-
----
-
-## 3. Triage 36 pending F_unmatched rows
-
-`pending.csv` holds rows the matcher couldn't auto-classify during
-Pass 1. Half a day of editor work.
-
----
-
-## 4. ACEADNED1/2/3/4 → ACEADNED concept rename
-
-Confirmed during testing in 0.1.0: the four versioned ACE variables
-across 2021-2024 are still distinct concept_ids. Should collapse to
-a single conceptual `ACEADNED` via the editor's "Rename concept
-everywhere" action. 5 minutes when you sit down to it.
-
----
-
-## 5. State-data vignette rewrite
-
-The state-data vignette currently reflects the pre-0.1.0 architecture.
-Needs rewrite against the new workflow:
-
-1. Install
-2. Initialize a config (DEMO for tryouts; OR with state_codebook_path)
-3. Check status (`brfss_status()`)
-4. **Set up demographics first** — `brfss_setup_demographic()` for the big six
-5. Register raw data files (`brfss_set_pool()`)
-6. Open editor for outcome variable mapping
-7. Pull data
-8. Hand off to tidyverse
+- [ ] Resolve each cell as either a column lookup (`is_calculated == 0`)
+  or YAML eval (`is_calculated == 1`)
+- [ ] For YAML cells: parse the inline `calculation_yaml` string and
+  call the existing `categorical_map` / `passthrough` runtime
+- [ ] Drop dependency on `cdc_var`, `state_only`, etc.
+- [ ] Output schema: tibble with `year`, `SEQNO`, `_STATE`, plus one
+  column per requested concept, plus `.weight`, `.strata`, `.psu`
+  resolved from concepts named `weight`/`strata`/`psu` if present
 
 Estimated: 1 session.
 
 ---
 
-## 6. Argument naming: `year` → `vintage`
+## 2. National crosswalk (build + ship)
 
-Pure naming question. Not blocking. Requires deprecation shim if done.
+Build a fully-mapped CDC National BRFSS crosswalk via the editor as
+a test of the v0.2.0 workflow. Ship as `inst/extdata/cdc_drafted.csv`
+for users to import via `brfss_import_config()`.
 
----
+- [ ] Set up CDC LLCP files as a test pool
+- [ ] Run `brfss_init_state("CDC", ..., draft = TRUE)`
+- [ ] Walk through every domain in the editor
+- [ ] Resolve all Unassigned concepts
+- [ ] Set up calculated cells where CDC's variable structure changed
+  year-to-year (race, income, sex, etc.)
+- [ ] Export the finished crosswalk and ship as opt-in import target
+- [ ] Vignette section explaining how to use it
 
-## 7. `brfss_download()` collapse into `brfss_pool()`
-
-Unified `brfss_pool(source, ...)` that handles both download (CDC) and
-register (state). UX improvement, not blocking.
-
----
-
-## 8. HAVHPAD 2012 → COPD pair verification
-
-Inspect 2012 codebooks; confirm or break the pair. 5 minutes.
-
----
-
-## 9. Documentation polish
-
-- [ ] **README.md rewrite** — currently describes the old API
-- [ ] **pkgdown site** (optional) — `_pkgdown.yml`, group reference index
+Estimated: several focused sessions of curation, plus testing.
 
 ---
 
-## 10. Templates — done
+## 3. Codebook reader (Stage C from spec)
 
-All shipped templates target CDC variable names. State users add
-by_year overrides for their state codebook.
+If a user's pool directory has a sibling `documentation/` folder with
+codebook CSVs, the editor should display question text and value labels
+for the selected cell.
 
-- [x] race — done (CDC stable; by_year example included)
-- [x] sex — done (SEX/SEX1/SEXVAR transition handled)
-- [x] income — done (INCOME2/INCOME3 unified template added)
-- [x] ethnicity — done (CDC stable; by_year example included)
-- [x] education — done (EDUCA stable across years)
-- [x] age — done (`_AGE80` stable across years)
+- [ ] `brfss_load_codebook(year, dataset)` parses the CSV
+- [ ] Editor renders question text + value labels in the right panel
+- [ ] Format spec: `{state}_{year}_codebook.csv` with columns
+  `variable_name`, `year`, `question_text`, `value_labels`, `notes`
+- [ ] Ship `inst/codebook_prompt_template.md` users can hand to an AI
+  agent along with their codebook PDF/Word doc to produce the CSV
+
+Estimated: 0.5 session.
 
 ---
 
-## 11. Ongoing: crosswalk curation
+## 4. Outstanding cleanups
 
-Periodic review for newly-discovered drift, newly-fielded modules,
-deprecated variables. Recurring slot.
+Stuff Stage A/B left behind:
+
+- [ ] `R/matcher.R`, `R/crosswalk_audit.R`, `R/clean_age.R` —
+  v0.1.0 helpers no longer used by anything active. Audit and
+  archive what's truly dead.
+- [ ] `R/transformations.R` — file-based transformation system; with
+  per-cell YAML in v0.2.0, this is mostly redundant. Audit; archive
+  if nothing references it.
+- [ ] `brfss_status()` — currently still mentions `state_only`,
+  `pending` files that don't exist in v0.2.0. Clean up the output.
+- [ ] Remaining v0.1.0 vestiges in user-facing surfaces (search/lookup
+  helpers; do they still make sense or should they retire?).
+
+Estimated: 0.5 session.
+
+---
+
+## 5. Domain auto-assigner improvements
+
+The current matcher catches ~73% of CDC variables but misses many
+underscore-prefixed calculated vars and most state-specific names.
+Low-priority improvements:
+
+- [ ] Match against `cdc_calculated_vars.csv` for the `_*` names
+- [ ] Fuzzy matching for trailing version digits (`ADDEPEV1` → match
+  `ADDEPEV2`'s domain)
+- [ ] User-extensible domain mapping (config file overrides)
+
+---
+
+## 6. pkgdown site
+
+Build out a pkgdown site for the v0.2.0 docs.
+
+- [ ] `_pkgdown.yml` with grouped reference index
+- [ ] Hosted (GitHub Pages?)
+
+Estimated: 0.5 session.
+
+---
+
+## 7. Tests
+
+The test suite is thin. Stage A/B added some, but core flows have no
+coverage.
+
+- [ ] Test `brfss_draft_crosswalk()` end-to-end against a synthetic
+  pool
+- [ ] Test the migration function on a known-good v0.1.0 fixture
+- [ ] Test `cw_merge_concepts()` happy path + conflict cases
+- [ ] Test the sanitization rules
+- [ ] Editor tests via `shinytest2`?
 
 ---
 
 ## Summary
 
-| Section | Effort | Architectural? |
-|---|---|---|
-| 1. Editor structured by_year | 2-3 sessions | yes — completes editor |
-| 2. Pass 2 calc vars | 1-2 days | data |
-| 3. F_unmatched triage | half day | data |
-| 4. ACEADNED rename | 5 min | data |
-| 5. State-data vignette | 1 session | release-quality |
-| 6. year → vintage | 1 hour | naming |
-| 7. download/pool collapse | half day | UX |
-| 8. HAVHPAD verify | 5 min | data |
-| 9. Docs polish | half day | release-quality |
-| 11. Ongoing curation | recurring | data |
+| # | Item | Effort | Architectural? |
+|---|---|---|---|
+| 1 | brfss_pull rewrite | 1 session | yes |
+| 2 | National crosswalk | several sessions | data + release |
+| 3 | Codebook reader | 0.5 session | yes |
+| 4 | v0.1.0 cleanup | 0.5 session | hygiene |
+| 5 | Domain assigner improvements | 1 session | quality |
+| 6 | pkgdown | 0.5 session | docs |
+| 7 | Tests | 1+ session | quality |
 
-Package is **fully functional** today. The remaining items are
-quality-of-life and data-curation work, not blockers.
+The v0.2.0 release is **fully functional for crosswalk building**.
+Pull, codebook context, and the National crosswalk are the items that
+will roll into v0.2.x point releases.

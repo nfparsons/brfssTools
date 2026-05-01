@@ -2,23 +2,20 @@
 % Please edit documentation in R/crosswalk_io.R
 \name{cw_rename_concept}
 \alias{cw_rename_concept}
-\title{Rename a concept across the crosswalk}
+\title{Rename a concept across all its rows}
 \usage{
 cw_rename_concept(bundle, from, to)
 }
 \arguments{
 \item{bundle}{Bundle from \code{cw_load()}.}
 
-\item{from}{The current concept_id.}
+\item{from}{Existing concept_id.}
 
-\item{to}{The new concept_id (validated for R-friendly naming).}
+\item{to}{New concept_id (will be validated for R-friendliness).}
 }
 \value{
 Updated bundle.
 }
 \description{
-Updates every row in \code{crosswalk}, \code{state_only}, and \code{cdc_only} whose
-\code{concept_id} matches \code{from} to use \code{to} instead. Useful for the
-"ACEHURT1 -> ACEHURT" pattern: collapse year-suffixed CDC/state names
-into a single semantic concept that brfss_pull() can address.
+Rename a concept across all its rows
 }

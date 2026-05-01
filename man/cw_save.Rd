@@ -2,25 +2,20 @@
 % Please edit documentation in R/crosswalk_io.R
 \name{cw_save}
 \alias{cw_save}
-\title{Save the bundle back to disk with a .bak rotation}
+\title{Save the bundle back to disk}
 \usage{
 cw_save(bundle, path = NULL)
 }
 \arguments{
-\item{bundle}{Crosswalk bundle from \code{cw_load()} (potentially mutated).}
+\item{bundle}{Bundle from \code{cw_load()}, possibly modified.}
 
-\item{path}{Optional override of write path. Defaults to the bundle's
-loaded path.}
+\item{path}{Optional config dir override.}
 }
 \value{
 The bundle, invisibly.
 }
 \description{
-Before writing, copies the existing crosswalk.csv to crosswalk.csv.bak.
-Only files that have actually changed in-memory are rewritten.
-}
-\details{
-If the bundle was loaded from the package's shipped extdata (read-only),
-this errors. Run \code{brfss_init_state()} to copy the sample into your user
-config dir first.
+Writes \code{crosswalk.csv} with .bak rotation. Reference data
+(codebooks, taxonomy) is never written from \code{cw_save()};
+the package treats those as read-only.
 }

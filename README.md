@@ -1,121 +1,82 @@
-# brfssTools 🛠️
+# brfssTools
 
-[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+A tool for harmonizing longitudinal Behavioral Risk Factor Surveillance
+System (BRFSS) survey data. The crosswalk is anchored on **your most
+recent year of data**: the package reads your latest year's variable
+list, treats each variable as a concept, and helps you build a draft
+crosswalk by mapping older years backwards through a Shiny editor.
+Cells can be flagged "calculated" to store inline YAML defining a
+year-specific computation.
 
-Working with longitudinal BRFSS (Behavioral Risk Factor Surveillance System) data is historically tedious. Variable names change, value codes shift (e.g., "1" means "Yes" in 2015, but "2" means "Yes" in 2016), and question text drifts. Furthermore, the transition to REAL-D demographic standards between 2021 and 2024 fractured race and ethnicity data into dozens of disparate array columns. And if you want to combine state-restricted data (e.g., Oregon) with the public national CDC files, the bookkeeping multiplies.
-
-`brfssTools` is a unified harmonization engine that solves this. It provides a `tidycensus`-style workflow: register or download a pool of raw survey files, search a bundled master crosswalk, and pull harmonized concepts as a tidy tibble — across years, across datasets.
-
-> See `vignette("brfssTools")` for a comprehensive walkthrough including a self-contained runnable example, the source-tag architecture, and the workflow for adding a new state dataset.
-
-## Installation
+## Install
 
 ```r
 # install.packages("pak")
 pak::pak("nfparsons/brfssTools")
 ```
 
-For national CDC data support, also install `haven`:
-
-```r
-pak::pak("haven")
-```
-
-## Quick start: national CDC BRFSS
+## Quick start
 
 ```r
 library(brfssTools)
 
-# 1. Pull a few years of national LLCP data from CDC into the user cache.
-#    This is a one-time setup per machine, per year.
-brfss_download(2020:2023)
-#> Downloading BRFSS 2020 from CDC...
-#>   -> ~/.cache/R/brfssTools/LLCP2020.XPT
-#> ...
-#> Indexed 4 file(s) for dataset 'National'.
+# 1. Point at your data
+brfss_set_pool("OR", "Z:/Secure_Data/Oregon_BRFSS")
 
-# 2. Load the master crosswalk filtered to national-applicable rules
-cw <- brfss_crosswalk(dataset = "National", years = 2020:2023)
-
-# 3. Pull harmonized concepts. Filter by state if you only need a few.
-my_data <- brfss_pull(
-  cw,
-  concept_ids = c("survey_weight", "psu", "strata", "fmd"),
-  dataset     = "National",
-  years       = 2020:2023,
-  states      = c("OR", "WA", "ID"),   # USPS or FIPS, your choice
-  id_cols     = "SEQNO",
-  output      = "wide"
-)
-```
-
-## Quick start: state-restricted data (BYOD)
-
-For Oregon and other state-restricted data, point the package at your secure data directory. Files can be `.csv` or `.xpt` — year is auto-detected from filename or the `SEQNO` column.
-
-```r
-brfss_set_pool("OR", "Z:/Secure_Data/BRFSS/Raw_Files")
-
-cw <- brfss_crosswalk(dataset = "OR", years = 2018:2023)
-
-my_data <- brfss_pull(
-  cw,
-  concept_ids = c("survey_weight", "psu", "strata", "multnomah_flag", "fmd"),
-  dataset     = "OR",
-  id_cols     = "SEQNO",
-  output      = "wide"
-)
-```
-
-## The master concept map
-
-There is one crosswalk for everything. Each rule in the `concept_map` carries a `source` tag that controls where it applies:
-
-| `source` value | Meaning                                                      |
-|----------------|--------------------------------------------------------------|
-| `"core"`       | Applies to every dataset (national LLCP and any state)       |
-| `"OR"`         | Oregon state-added items only                                |
-| `"WA"`, `"CA"`, ... | (Future) State-added items for that state                  |
-
-When you call `brfss_pull(..., dataset = "National")`, only `core` rules are applied. When you call `brfss_pull(..., dataset = "OR")`, both `core` and `OR` rules are applied — so Oregon's state-added questions show up alongside the LLCP core. Adding a new state means tagging that state's rules with the state code; no schema changes, no parallel maps.
-
-If you have a legacy `concept_map` CSV with a `survey` column (values `"BRFSS"`), it loads transparently — the column is renamed to `source` and values are coerced to `"core"` on the fly.
-
-## Searching the crosswalk
-
-Not sure what a variable was called in 2016 vs 2023? Search the crosswalk by concept name, raw question text, or raw variable name:
-
-```r
-brfss_search(cw, "asthma")
-brfss_search(cw, "ASTHNOW", scope = "raw_var")
-```
-
-## Untangling race and ethnicity
-
-Between 2012 and 2024, BRFSS shifted from basic summary columns to highly granular REAL-D arrays (e.g., `RE1` through `RE10`). The `brfss_race()` helper scans across all historical and modern race columns to derive a single, standardized demographic variable.
-
-```r
-demos <- brfss_pull(
-  cw, c("race_array_1", "race_array_2", "hisp_flag"),
-  dataset = "OR", output = "wide"
+# 2. Initialize and draft from the most recent year
+brfss_init_state(
+  state               = "OR",
+  state_codebook_path = "~/data/oregon_codebook.csv",
+  draft               = TRUE
 )
 
-# Strict CDC 8-level mutually exclusive standard
-demos |> brfss_clean_race(standard = "cdc")
-
-# High-level minimum categories (e.g., White NH vs. BIPOC)
-demos |> brfss_clean_race(standard = "fewest")
-
-# Full REAL-D granularity (binary indicator columns)
-demos |> brfss_clean_race(standard = "reald")
+# 3. Open the editor to fill in older years
+brfss_crosswalk_editor()
 ```
 
-## Cache directory
+See `vignette("getting-started", package = "brfssTools")` for the full
+walkthrough.
 
-National downloads land in [`brfss_cache_dir()`](R/download.R) — the OS-appropriate user cache path provided by `tools::R_user_dir()`. You can override per-call with `brfss_download(years, dir = "...")`, or relocate by running `brfss_download()` once with a custom `dir` and pointing future sessions at it via `brfss_set_pool("National", "...")`.
+## What's in the box
 
-## How it works under the hood
+- `brfss_init_state()` / `brfss_status()` / `brfss_reset()` — config
+  scaffolding and state management.
+- `brfss_set_pool()` / `brfss_pool_status()` — register and inspect
+  your data files.
+- `brfss_draft_crosswalk()` / `brfss_redraft_crosswalk()` — generate
+  the crosswalk from your most recent year; idempotent extension when
+  new years arrive.
+- `brfss_crosswalk_editor()` — Shiny GUI for filling in older years,
+  flagging calculated cells, assigning domains, merging duplicate
+  concepts.
+- `cw_load()` / `cw_save()` plus a console CRUD layer
+  (`cw_set_var`, `cw_set_calc`, `cw_assign_domain`, `cw_verify`,
+  `cw_rename_concept`, `cw_merge_concepts`, `cw_add_concept`,
+  `cw_remove_concept`).
+- `brfss_export_config()` / `brfss_import_config()` — portable zips
+  for moving work between machines.
+- `brfss_migrate_crosswalk_to_v2()` — one-shot upgrade from a
+  v0.1.0 crosswalk.
 
-The engine is driven by a `concept_map.csv` bundled inside the package. This map links raw variables (like `CTYANSI` or `region_2016`) to standard concepts (like `multnomah_flag`) and provides the recode logic (`051=1; 51=1; 1=1`).
+## Status
 
-If a rule needs to be updated, it's updated centrally in the map — instantly fixing the logic for all future pulls.
+This is **v0.2.0**, which represents a significant architectural
+rewrite from v0.1.x. The crosswalk schema is now anchored on user
+data rather than CDC's variable list; the editor is rebuilt around
+per-cell mapping; and demographics are no longer architecturally
+special — they're just concepts like any other.
+
+The Shiny editor is the main interface. Console-only workflows
+(`cw_*` family) are also fully supported.
+
+`brfss_pull()` (loading harmonized data from your raw files) is
+deferred to a follow-up release. The crosswalk-building workflow is
+the focus of v0.2.0.
+
+A pre-built National crosswalk (mapping CDC's National BRFSS variables
+across all years) is planned to ship in a future release as an
+opt-in `brfss_import_config()` target. Not in v0.2.0.
+
+## Issues
+
+File issues at https://github.com/nfparsons/brfssTools/issues.

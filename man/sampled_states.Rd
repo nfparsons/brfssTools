@@ -10,7 +10,5 @@ sampled_states()
 Character vector of state codes.
 }
 \description{
-Currently only \code{"DEMO"} ships with the package. Real states require a
-user-supplied codebook via \code{state_codebook_path} in
-\code{\link[=brfss_init_state]{brfss_init_state()}}.
+States with a built-in sample shipped in the package
 }

@@ -1,3 +1,119 @@
+# brfssTools 0.2.0
+
+A significant architectural rewrite. The crosswalk is no longer anchored
+on CDC's variable list; it's anchored on **the user's most recent year
+of data**. CDC reference data stays as a domain-assignment heuristic but
+no longer drives the crosswalk shape.
+
+## Architecture (breaking changes)
+
+* **New crosswalk schema.** Columns are now `concept_id`, `year`,
+  `state_var`, `is_calculated`, `calculation_yaml`, `domain`,
+  `subdomain`, `unverified`, `notes`. Dropped: `cdc_var`, `is_primary`,
+  `source`, `score`. Existing v0.1.0 crosswalks must be migrated via
+  `brfss_migrate_crosswalk_to_v2()` (see Migration below).
+
+* **User-anchored drafting.** `brfss_draft_crosswalk()` reads the
+  registered pool, finds the most recent year's data file, treats each
+  variable in that file as a concept, and creates one row per concept
+  per year (`state_var = NA` for years awaiting user mapping).
+  `brfss_redraft_crosswalk()` extends an existing crosswalk
+  idempotently when new years are added.
+
+* **Per-cell calculation YAML.** Cells can be flagged `is_calculated = 1`
+  with inline YAML defining a categorical_map or passthrough for that
+  specific (concept, year). The same concept can be a column lookup in
+  one year and a calculation in another. The separate `transformations/`
+  folder concept is removed; calculation YAML lives only in the crosswalk.
+
+* **Domain auto-assignment.** New `brfss_assign_domains()` matches
+  concept names against CDC's section names (via the shipped
+  `cdc_codebook.csv`) and assigns `domain` and `subdomain` accordingly.
+  Concepts that don't match get `domain = "Unassigned"` and require
+  user assignment in the editor before their cells become editable.
+
+## New / renamed functions
+
+* `brfss_draft_crosswalk(dataset, path, overwrite_existing)` — produce
+  a draft crosswalk anchored on the most recent year's data.
+* `brfss_redraft_crosswalk(dataset, path)` — idempotent extend.
+* `brfss_assign_domains(concept_ids, raw_var_names)` — assign domains
+  via CDC codebook lookup.
+* `sanitize_concept_id(x)` — make a variable name R-friendly.
+* `brfss_migrate_crosswalk_to_v2(path, dry_run)` — one-shot v0.1.0
+  upgrade.
+* `cw_set_var(bundle, concept_id, year, state_var)` — set a column
+  lookup for a (concept, year) cell.
+* `cw_set_calc(bundle, concept_id, year, calculation_yaml)` — set
+  inline calculation YAML.
+* `cw_assign_domain(bundle, concept_id, domain, subdomain)` — assign
+  a concept to a domain/subdomain.
+* `cw_verify(bundle, concept_id, year)` — clear the unverified flag on
+  one cell.
+* `cw_merge_concepts(bundle, into, from)` — merge one concept's
+  mappings into another (errors on year-conflicts).
+* `cw_add_concept(bundle, concept_id, years, ...)`,
+  `cw_remove_concept(bundle, concept_id)` — concept-level CRUD.
+* `brfss_init_state(..., draft = TRUE)` — chains init + draft in one
+  call.
+
+## Editor rewrite
+
+The crosswalk editor is rebuilt for the new schema:
+
+* **Single view.** The CDC-anchored / State-anchored / Demographics
+  tabs are gone. One heatmap, organized by domain, with Unassigned
+  pinned at the bottom.
+* **Per-cell editing.** Click a cell to open the right-side edit
+  panel; pick a state_var from a searchable, filtered dropdown, or
+  toggle "Calculated" to write inline YAML.
+* **Concept-level actions.** Right-panel buttons for Rename,
+  Merge with..., and Delete.
+* **Vars-already-used filter.** When picking a state_var, the
+  dropdown excludes variables already used by other concepts in the
+  same year.
+* **shinyAce integration.** If `shinyAce` is installed, the calculated-
+  YAML editor uses syntax highlighting; otherwise falls back to a
+  monospace textarea.
+
+## Removed / archived
+
+The following are no longer part of the active package; they're moved
+to `inst/archive/` for reference:
+
+* The CDC-seeded crosswalk (`cdc_seed.csv`).
+* Demographics templates (18 YAML files) and helpers
+  (`brfss_setup_demographic`, `brfss_list_demographic_templates`,
+  `brfss_demographic_status`, `brfss_render_transformation_code`).
+* The v0.1.0 crosswalk CRUD (`cw_add_pair`, `cw_remove_pair`,
+  `cw_update_pair`, `cw_mark_state_only`, `cw_mark_cdc_only`,
+  `cw_replace_cdc_partner`, `cw_replace_state_partner`, `cw_map_seeded`,
+  `cw_verify_pair`, `cw_recompute_concept_ids`).
+* The v0.1.0 editor (CDC-anchored / State-anchored / Demographics
+  tabbed interface).
+* `state_only.csv`, `cdc_only.csv`, `pending.csv` from `inst/extdata/`
+  (artifacts of the v0.1.0 matcher pipeline).
+
+## Migration from v0.1.0
+
+```r
+brfss_migrate_crosswalk_to_v2(dry_run = TRUE)
+# Inspect what would change without writing.
+
+brfss_migrate_crosswalk_to_v2()
+# Commit. Backs up v0.1.0 crosswalk to crosswalk.csv.v01.bak.
+```
+
+After migrating, you'll likely have CDC's year-versioned variable
+groups as separate concepts (e.g., `ADDEPEV2` and `ADDEPEV3`). Use the
+editor's Merge button to consolidate them.
+
+## Pull (deferred)
+
+`brfss_pull()` for the v0.2.0 schema is deferred to a follow-up
+release. The crosswalk-building workflow is the focus of v0.2.0;
+loading harmonized data via the new schema will land in 0.2.x.
+
 # brfssTools 0.1.0
 
 First architecture-complete release. The crosswalk schema, pull
