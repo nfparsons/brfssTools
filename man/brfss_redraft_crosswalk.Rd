@@ -4,13 +4,11 @@
 \alias{brfss_redraft_crosswalk}
 \title{Re-draft a crosswalk to add new years / variables}
 \usage{
-brfss_redraft_crosswalk(dataset = NULL, path = NULL)
+brfss_redraft_crosswalk(dataset = NULL)
 }
 \arguments{
 \item{dataset}{Pool dataset name. If NULL and exactly one pool is
 registered, uses that one.}
-
-\item{path}{Optional config dir override.}
 }
 \value{
 The updated crosswalk tibble, invisibly.
@@ -23,8 +21,4 @@ represented (state_var = NA, unverified = 1).
 \item For variables in the most recent year that don't yet have a
 concept_id, creates new concepts and adds rows for all years.
 }
-}
-\details{
-This is what you run after dropping a 2025 data file in: existing
-work survives, new variables show up as Unassigned for review.
 }

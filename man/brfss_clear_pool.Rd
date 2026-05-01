@@ -2,19 +2,16 @@
 % Please edit documentation in R/pool.R
 \name{brfss_clear_pool}
 \alias{brfss_clear_pool}
-\title{Clear one or all registered data pools}
+\title{Drop a registered pool (or all of them)}
 \usage{
 brfss_clear_pool(dataset = NULL)
 }
 \arguments{
-\item{dataset}{A single dataset name to clear, or \code{NULL} (default) to
-clear every registered pool.}
+\item{dataset}{Character dataset name. If NULL, drops all pools.}
 }
 \value{
-Invisibly, a character vector of cleared dataset names.
+Invisible NULL.
 }
 \description{
-Removes a dataset's pool registration from the package's session
-environment. Useful for testing and for switching between alternate
-data folders without restarting R.
+Drop a registered pool (or all of them)
 }

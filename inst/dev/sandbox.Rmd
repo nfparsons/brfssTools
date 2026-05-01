@@ -1,7 +1,6 @@
 
 ```{r}
 # restart R completely
-
 .rs.restartR()
 ```
 
@@ -15,9 +14,12 @@ remove.packages("brfssTools")
 .rs.restartR()
 ```
 
-```{r}
+```{r warning=FALSE}
 devtools::install_local("C:/My Documents/R Projects/brfssTools",
-                        quick = TRUE, upgrade = "never")
+                        quick = FALSE,
+                        build_vignettes = TRUE,
+                        upgrade = "never",
+                        force = TRUE)
 ```
 
 ```{r}
@@ -27,6 +29,28 @@ devtools::install_local("C:/My Documents/R Projects/brfssTools",
 
 ```{r}
 library(brfssTools)
-brfss_crosswalk_editor()
+?brfssTools
+vignette("getting-started", package = "brfssTools")  # Includes Common workflows now
 ```
+
+```{r}
+path <- "~/data-repo/oha__behavioral_risk_factor_surveillance_system/annual"
+
+# 1. Pool registration — typical case
+brfss_set_pool("National", data_path = path)
+brfss_status()
+# Should show OR with the data path, default codebook_path, default crosswalk path
+```
+
+```{r}
+# Draft from the most recent year of CDC data
+# brfss_draft_crosswalk(dataset = "National")
+```
+
+```{r}
+# Open the editor
+brfss_crosswalk_editor(dataset = "National")
+```
+
+
 

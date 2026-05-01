@@ -13,5 +13,3 @@
 ^\.DS_Store$
 ^\.positai$
 ^\.claude$
-^doc$
-^Meta$

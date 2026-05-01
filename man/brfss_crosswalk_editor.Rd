@@ -4,24 +4,26 @@
 \alias{brfss_crosswalk_editor}
 \title{Launch the interactive crosswalk editor}
 \usage{
-brfss_crosswalk_editor(path = NULL, launch.browser = TRUE, port = NULL)
+brfss_crosswalk_editor(dataset = NULL, launch.browser = TRUE, port = NULL)
 }
 \arguments{
-\item{path}{Directory containing the canonical crosswalk files. Defaults
-to the package's installed \verb{inst/extdata/}.}
+\item{dataset}{Character. Registered dataset name. If NULL and
+exactly one pool is registered, uses that one.}
 
-\item{launch.browser}{Passed to \code{shiny::runApp()}. Default TRUE.}
+\item{launch.browser}{Logical, passed to \code{shiny::runApp()}.
+Default TRUE.}
 
-\item{port}{Optional port; default chosen by Shiny.}
+\item{port}{Optional port override.}
 }
 \value{
 Invisible NULL after the app exits.
 }
 \description{
-Opens a local Shiny app for browsing the BRFSS crosswalk by domain and
-editing pairs. Edits write directly to the package's \verb{inst/extdata/}
-files (with a \code{.bak} rotation before each save).
+Opens the Shiny editor for one registered pool's crosswalk. The
+editor reads from and writes to the crosswalk path registered by
+\code{brfss_set_pool()}.
 }
 \details{
-Shiny, DT, and bslib must be installed. They are listed in \verb{Suggests:}.
+Requires \code{shiny}, \code{bslib}, and \code{htmltools}; will use
+\code{shinyAce} for syntax-highlighted YAML editing if installed.
 }

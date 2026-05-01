@@ -2,20 +2,16 @@
 % Please edit documentation in R/pool.R
 \name{brfss_detect_year}
 \alias{brfss_detect_year}
-\title{Auto-detect the BRFSS survey year from a raw data file}
+\title{Detect the year a BRFSS file represents}
 \usage{
 brfss_detect_year(file_path)
 }
 \arguments{
-\item{file_path}{Full path to a \code{.csv} or \code{.xpt} file.}
+\item{file_path}{Character path to a \code{.csv} or \code{.xpt} file.}
 }
 \value{
-Integer year, or \code{NULL} if detection fails.
+An integer year, or NA if undetectable.
 }
 \description{
-Tries two strategies in order:
-\enumerate{
-\item Parse a 4-digit year from the filename (e.g., \code{LLCP2020.XPT} -> 2020).
-\item Peek at the \code{SEQNO} column and extract the leading 4 characters.
-}
+Tries the filename first, then peeks at the file's \code{SEQNO} column.
 }

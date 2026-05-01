@@ -4,17 +4,15 @@
 \alias{brfss_draft_crosswalk}
 \title{Draft a crosswalk from your registered data pool}
 \usage{
-brfss_draft_crosswalk(dataset = NULL, path = NULL, overwrite_existing = FALSE)
+brfss_draft_crosswalk(dataset = NULL, overwrite_existing = FALSE)
 }
 \arguments{
-\item{dataset}{Pool dataset name (e.g., "OR"). If NULL and exactly one
-pool is registered, uses that one.}
+\item{dataset}{Pool dataset name. If NULL and exactly one pool is
+registered, uses that one.}
 
-\item{path}{Optional config dir override.}
-
-\item{overwrite_existing}{Logical. If FALSE (default), errors when a
-non-empty crosswalk already exists. If TRUE, replaces it (with .bak
-rotation).}
+\item{overwrite_existing}{Logical. If FALSE (default), errors when
+a non-empty crosswalk already exists at the registered path. If
+TRUE, replaces it (with .bak rotation).}
 }
 \value{
 The drafted crosswalk tibble, invisibly.
@@ -33,4 +31,8 @@ state_var = NA in earlier years (unverified, awaiting user mapping)
 (\code{\link{brfss_assign_domains}}); concepts with no match get
 \code{domain = "Unassigned"} and need user assignment in the editor.
 }
+}
+\details{
+Writes to the crosswalk path registered when the pool was set up
+(default: \code{<data_path>/documentation/<dataset>_crosswalk.csv}).
 }

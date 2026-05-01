@@ -4,19 +4,22 @@
 \alias{cw_load}
 \title{Load the crosswalk bundle}
 \usage{
-cw_load(path = NULL)
+cw_load(dataset = NULL, path = NULL)
 }
 \arguments{
-\item{path}{Optional config dir override.}
+\item{dataset}{Character. The registered pool to load. If NULL and
+exactly one pool is registered, uses that one.}
+
+\item{path}{Optional explicit path to the crosswalk CSV (overrides
+what's registered for the pool).}
 }
 \value{
-A list with elements \code{crosswalk}, \code{cdc_codebook},
-\code{state_codebook}, \code{taxonomy}, \code{cdc_calculated_vars},
-\code{.path}.
+A list bundle with elements \code{crosswalk}, \code{cdc_codebook},
+\code{taxonomy}, \code{cdc_calculated_vars}, \code{state_codebook} (the codebook
+for the most recent year, if available), \code{dataset}, \code{.path}.
 }
 \description{
-Reads the crosswalk and reference data (CDC codebook, state codebook,
-taxonomy) from the config dir and package extdata. Returns a list
-bundle. Mutates only \code{$crosswalk}; everything else is read-only
+Reads the crosswalk and reference data for a registered pool.
+Returns a list bundle with mutable \code{$crosswalk} plus read-only
 reference data.
 }

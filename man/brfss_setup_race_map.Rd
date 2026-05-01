@@ -2,20 +2,10 @@
 % Please edit documentation in R/categorical_map.R
 \name{brfss_setup_race_map}
 \alias{brfss_setup_race_map}
-\title{Set up the race categorical map (CDC-style)}
+\title{(deprecated in v0.2.0)}
 \usage{
 brfss_setup_race_map(path = NULL, edit = interactive())
 }
-\arguments{
-\item{path}{Optional config path override.}
-
-\item{edit}{Logical; opens the file in editor when interactive.}
-}
-\value{
-The YAML file path, invisibly.
-}
 \description{
-Convenience wrapper around \code{brfss_setup_categorical_map("race", "race")}.
-The shipped template implements CDC's \verb{_RACE} calculated variable: 7 NH
-single-race categories + Hispanic + don't-know/refused.
+(deprecated in v0.2.0)
 }

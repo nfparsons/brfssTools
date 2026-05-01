@@ -23,7 +23,7 @@ for each Asian and Pacific Islander subgroup separable in MRACE.
 The dataframe with the requested demographic standard appended.
 }
 \description{
-Use \code{\link[=brfss_clean_race]{brfss_clean_race()}} instead. Kept as an alias for backwards
-compatibility.
+Use \code{\link[=brfss_clean_race]{brfss_clean_race()}} instead. Kept as an alias for
+backwards compatibility.
 }
 \keyword{internal}

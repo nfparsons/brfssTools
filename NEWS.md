@@ -7,55 +7,90 @@ no longer drives the crosswalk shape.
 
 ## Architecture (breaking changes)
 
+* **Path-based pool registration.** The user-config-dir concept is
+  gone. Each project specifies three paths via [`brfss_set_pool()`]:
+  `data_path` (where raw data lives, required), `codebook_path`
+  (where codebook CSVs live, defaults to `<data_path>/documentation/`),
+  and `crosswalk` (full path to the crosswalk CSV, defaults to
+  `<codebook_path>/<dataset>_crosswalk.csv`). Most users only set
+  `data_path` and let defaults do the rest.
+
+* **No more `brfss_init_state()`.** The init function is replaced by
+  `brfss_set_pool()`. Project state is the pool registration plus
+  whatever files exist at the registered paths. Pool registration is
+  session-scoped — re-run on each R session, or wrap in `.Rprofile`.
+
 * **New crosswalk schema.** Columns are now `concept_id`, `year`,
   `state_var`, `is_calculated`, `calculation_yaml`, `domain`,
   `subdomain`, `unverified`, `notes`. Dropped: `cdc_var`, `is_primary`,
   `source`, `score`. Existing v0.1.0 crosswalks must be migrated via
-  `brfss_migrate_crosswalk_to_v2()` (see Migration below).
+  `brfss_migrate_crosswalk_to_v2(path = ...)`.
 
 * **User-anchored drafting.** `brfss_draft_crosswalk()` reads the
-  registered pool, finds the most recent year's data file, treats each
-  variable in that file as a concept, and creates one row per concept
-  per year (`state_var = NA` for years awaiting user mapping).
-  `brfss_redraft_crosswalk()` extends an existing crosswalk
-  idempotently when new years are added.
+  registered pool's most recent year, treats each variable as a
+  concept, and creates one row per concept per year (`state_var = NA`
+  for years awaiting user mapping). `brfss_redraft_crosswalk()` extends
+  an existing crosswalk idempotently when new years are added.
 
-* **Per-cell calculation YAML.** Cells can be flagged `is_calculated = 1`
-  with inline YAML defining a categorical_map or passthrough for that
-  specific (concept, year). The same concept can be a column lookup in
-  one year and a calculation in another. The separate `transformations/`
-  folder concept is removed; calculation YAML lives only in the crosswalk.
+* **Per-cell calculation YAML.** Cells can be flagged
+  `is_calculated = 1` with inline YAML defining a categorical_map or
+  passthrough for that specific (concept, year). The same concept can
+  be a column lookup in one year and a calculation in another. The
+  separate `transformations/` folder concept is removed.
 
 * **Domain auto-assignment.** New `brfss_assign_domains()` matches
-  concept names against CDC's section names (via the shipped
-  `cdc_codebook.csv`) and assigns `domain` and `subdomain` accordingly.
-  Concepts that don't match get `domain = "Unassigned"` and require
-  user assignment in the editor before their cells become editable.
+  concept names against CDC's section names and assigns `domain` and
+  `subdomain` accordingly. Concepts that don't match get
+  `domain = "Unassigned"` and require user assignment in the editor
+  before their cells become editable.
 
 ## New / renamed functions
 
-* `brfss_draft_crosswalk(dataset, path, overwrite_existing)` — produce
-  a draft crosswalk anchored on the most recent year's data.
-* `brfss_redraft_crosswalk(dataset, path)` — idempotent extend.
-* `brfss_assign_domains(concept_ids, raw_var_names)` — assign domains
-  via CDC codebook lookup.
+* `brfss_set_pool(dataset, data_path, codebook_path = NULL, crosswalk = NULL)` —
+  three-path pool registration with sensible defaults.
+* `brfss_pool_status()`, `brfss_pool_get(dataset)`,
+  `brfss_clear_pool(dataset)` — inspect and manage pools.
+* `brfss_use_national(years, ...)` — convenience for National-data
+  users; downloads CDC LLCP files and registers the pool in one call.
+* `brfss_draft_crosswalk(dataset, ...)` — produce a draft crosswalk
+  from the registered pool's most recent year.
+* `brfss_redraft_crosswalk(dataset)` — idempotent extend.
+* `brfss_assign_domains(concept_ids, raw_var_names)` — domain
+  auto-assignment via CDC codebook lookup.
 * `sanitize_concept_id(x)` — make a variable name R-friendly.
 * `brfss_migrate_crosswalk_to_v2(path, dry_run)` — one-shot v0.1.0
   upgrade.
-* `cw_set_var(bundle, concept_id, year, state_var)` — set a column
-  lookup for a (concept, year) cell.
-* `cw_set_calc(bundle, concept_id, year, calculation_yaml)` — set
-  inline calculation YAML.
-* `cw_assign_domain(bundle, concept_id, domain, subdomain)` — assign
-  a concept to a domain/subdomain.
-* `cw_verify(bundle, concept_id, year)` — clear the unverified flag on
-  one cell.
-* `cw_merge_concepts(bundle, into, from)` — merge one concept's
-  mappings into another (errors on year-conflicts).
-* `cw_add_concept(bundle, concept_id, years, ...)`,
-  `cw_remove_concept(bundle, concept_id)` — concept-level CRUD.
-* `brfss_init_state(..., draft = TRUE)` — chains init + draft in one
-  call.
+* `brfss_migrate_config_dir(target_dir, dataset, ...)` — for users
+  with pre-release config-dir state, copies their crosswalk and other
+  files into a project location.
+* `cw_load(dataset, path)` / `cw_save(bundle, dataset, path)` — load
+  and save against the registered pool's crosswalk path.
+* `cw_set_var()` — set a column lookup for a (concept, year) cell.
+* `cw_set_calc()` — set inline calculation YAML.
+* `cw_assign_domain()`, `cw_verify()`, `cw_rename_concept()`,
+  `cw_merge_concepts()`, `cw_add_concept()`, `cw_remove_concept()` —
+  programmatic CRUD.
+* `brfss_load_codebook(dataset, year)` /
+  `brfss_codebook_help(what)` — codebook documentation reader.
+* `brfss_status()` — printed summary of all registered pools.
+
+## Codebook documentation reader
+
+* The editor displays question text and value labels for the selected
+  cell when properly-formatted codebook CSVs are present in a sibling
+  \code{documentation/} folder.
+* New `brfss_load_codebook(dataset, year)` reads and validates the
+  codebook for one (dataset, year). Returns a tibble with parsed
+  value labels.
+* New `brfss_codebook_help()` prints either the format spec or an
+  AI-agent prompt template for converting messy raw codebooks into
+  the expected format. The prompt template is shipped as
+  `inst/codebook/codebook_prompt.md`; the format spec as
+  `inst/codebook/format_spec.md`.
+* Codebooks are optional. The editor falls back to "(no codebook
+  found for {year})" notes when they're absent. Variables for which
+  no codebook entry is found render with "(Variable not found in
+  codebook)".
 
 ## Editor rewrite
 
@@ -81,27 +116,50 @@ The crosswalk editor is rebuilt for the new schema:
 The following are no longer part of the active package; they're moved
 to `inst/archive/` for reference:
 
+* `brfss_init_state()`, `brfss_reset()`, `brfss_export_config()`,
+  `brfss_import_config()`, `brfss_config_path()` — replaced by the
+  path-based pool architecture.
 * The CDC-seeded crosswalk (`cdc_seed.csv`).
 * Demographics templates (18 YAML files) and helpers
   (`brfss_setup_demographic`, `brfss_list_demographic_templates`,
-  `brfss_demographic_status`, `brfss_render_transformation_code`).
-* The v0.1.0 crosswalk CRUD (`cw_add_pair`, `cw_remove_pair`,
-  `cw_update_pair`, `cw_mark_state_only`, `cw_mark_cdc_only`,
-  `cw_replace_cdc_partner`, `cw_replace_state_partner`, `cw_map_seeded`,
-  `cw_verify_pair`, `cw_recompute_concept_ids`).
+  `brfss_demographic_status`).
+* The v0.1.0 crosswalk CRUD (`cw_add_pair`, `cw_remove_pair`, etc.).
 * The v0.1.0 editor (CDC-anchored / State-anchored / Demographics
   tabbed interface).
+* The v0.1.0 `brfss_search()` and `brfss_lookup()` (will be reimplemented
+  for v0.2.0 schema in a follow-up).
 * `state_only.csv`, `cdc_only.csv`, `pending.csv` from `inst/extdata/`
   (artifacts of the v0.1.0 matcher pipeline).
+* The Pass-1 matcher pipeline (`R/matcher.R`, `R/crosswalk_audit.R`,
+  `R/clean_age.R`).
+* File-based transformation helpers (`brfss_setup_transformation`,
+  `brfss_setup_categorical_map`, `brfss_render_transformation_code`,
+  `brfss_list_transformations`) — still callable but error informatively;
+  calculation YAML now lives inline in the crosswalk.
 
-## Migration from v0.1.0
+## Migration from v0.1.0 or earlier v0.2.0 development builds
+
+If you have a v0.1.0 crosswalk file:
 
 ```r
-brfss_migrate_crosswalk_to_v2(dry_run = TRUE)
+brfss_migrate_crosswalk_to_v2(path = "path/to/old/crosswalk.csv",
+                              dry_run = TRUE)
 # Inspect what would change without writing.
 
-brfss_migrate_crosswalk_to_v2()
-# Commit. Backs up v0.1.0 crosswalk to crosswalk.csv.v01.bak.
+brfss_migrate_crosswalk_to_v2(path = "path/to/old/crosswalk.csv")
+# Commit. Backs up v0.1.0 crosswalk to <path>.v01.bak.
+```
+
+If you used a pre-release v0.2.0 build with a config dir at
+`tools::R_user_dir("brfssTools", "config")`:
+
+```r
+brfss_migrate_config_dir(
+  target_dir = "C:/projects/oregon/documentation",
+  dataset    = "OR"
+)
+# Copies crosswalk.csv -> OR_crosswalk.csv at the new location.
+# Pass remove_source = TRUE after verification to delete the config dir.
 ```
 
 After migrating, you'll likely have CDC's year-versioned variable

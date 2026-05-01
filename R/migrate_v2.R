@@ -16,17 +16,20 @@
 #'   \item Auto-assigns domains via the CDC codebook lookup.
 #' }
 #'
-#' Backs up the existing crosswalk to `crosswalk.csv.v01.bak` before
+#' Backs up the existing crosswalk to \code{<path>.v01.bak} before
 #' writing.
 #'
-#' @param path Optional config dir override.
-#' @param dry_run Logical. If TRUE (default FALSE), returns the migrated
-#'   tibble without writing to disk. Useful for inspection.
+#' @param path Path to the v0.1.0 \code{crosswalk.csv} file. Required.
+#' @param dry_run Logical. If TRUE, returns the migrated tibble
+#'   without writing. Useful for inspection.
 #' @return The migrated crosswalk tibble, invisibly.
 #' @export
-brfss_migrate_crosswalk_to_v2 <- function(path = NULL, dry_run = FALSE) {
-  cfg <- brfss_config_path(path, must_exist = TRUE)
-  cw_fp <- file.path(cfg, "crosswalk.csv")
+brfss_migrate_crosswalk_to_v2 <- function(path, dry_run = FALSE) {
+  if (missing(path) || !is.character(path) || length(path) != 1L) {
+    stop("`path` is required: pass the full path to your v0.1.0 ",
+          "crosswalk.csv file.", call. = FALSE)
+  }
+  cw_fp <- path
   if (!file.exists(cw_fp)) {
     stop("No crosswalk found at: ", cw_fp, call. = FALSE)
   }
@@ -100,7 +103,7 @@ brfss_migrate_crosswalk_to_v2 <- function(path = NULL, dry_run = FALSE) {
   }
 
   # Backup and write
-  bak <- file.path(cfg, "crosswalk.csv.v01.bak")
+  bak <- paste0(cw_fp, ".v01.bak")
   file.copy(cw_fp, bak, overwrite = TRUE)
   message("Backed up v0.1.0 crosswalk to: ", bak)
 

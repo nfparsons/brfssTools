@@ -28,8 +28,8 @@ brfss_cache_dir <- function() {
 #' Only years 2011 and later are supported; the 2011 weighting methodology
 #' change (raking + cell phone frame) makes earlier files non-comparable.
 #'
-#' @param years Integer vector of survey years to download. All must be
-#'   `>= 2011`.
+#' @param year Integer scalar or vector of survey years to download.
+#'   All must be `>= 2011`.
 #' @param dir Cache directory. Defaults to [brfssTools::brfss_cache_dir()].
 #' @param overwrite If `TRUE`, re-download files even if a local copy exists.
 #'   Default `FALSE`.
@@ -48,18 +48,18 @@ brfss_cache_dir <- function() {
 #' brfss_pull(cw, c("survey_weight", "fmd"),
 #'            dataset = "National", states = c("OR", "WA"))
 #' }
-brfss_download <- function(years,
+brfss_download <- function(year,
                            dir = brfss_cache_dir(),
                            overwrite = FALSE,
                            quiet = FALSE) {
 
   rlang::check_installed("haven", reason = "to read downloaded XPT files.")
 
-  if (!is.numeric(years) || length(years) == 0L) {
-    stop("`years` must be a non-empty numeric vector.", call. = FALSE)
+  if (!is.numeric(year) || length(year) == 0L) {
+    stop("`year` must be a non-empty numeric vector.", call. = FALSE)
   }
-  years <- as.integer(years)
-  bad <- years[years < 2011L]
+  year <- as.integer(year)
+  bad <- year[year < 2011L]
   if (length(bad)) {
     stop(sprintf(
       "Years before 2011 are not supported (got: %s). The 2011 weighting change makes earlier data non-comparable.",
@@ -71,7 +71,7 @@ brfss_download <- function(years,
     dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   }
 
-  results <- purrr::map(years, function(yr) {
+  results <- purrr::map(year, function(yr) {
     .download_one_year(yr, dir = dir, overwrite = overwrite, quiet = quiet)
   })
 
@@ -80,7 +80,7 @@ brfss_download <- function(years,
   # Register the cache as the National pool, so brfss_pull() works immediately.
   ok <- out$status %in% c("downloaded", "cached")
   if (any(ok)) {
-    brfss_set_pool("National", dir)
+    brfss_set_pool(dataset = "National", data_path = dir)
   } else {
     warning("No files were successfully downloaded; National pool not registered.",
             call. = FALSE)

@@ -136,8 +136,8 @@ brfss_clean_race <- function(df, standard = c("fewest", "cdc", "reald")) {
 
 #' Derive Standardized Race/Ethnicity (deprecated)
 #'
-#' Use [brfss_clean_race()] instead. Kept as an alias for backwards
-#' compatibility.
+#' Use [brfssTools::brfss_clean_race()] instead. Kept as an alias for
+#' backwards compatibility.
 #'
 #' @inheritParams brfss_clean_race
 #' @return The dataframe with the requested demographic standard appended.

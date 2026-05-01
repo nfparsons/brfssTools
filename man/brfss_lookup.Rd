@@ -2,21 +2,17 @@
 % Please edit documentation in R/crosswalk.R
 \name{brfss_lookup}
 \alias{brfss_lookup}
-\title{Look up the full crosswalk for one or more concepts}
+\title{Look up specific concept_ids in the crosswalk}
 \usage{
-brfss_lookup(concept_ids, path = NULL)
+brfss_lookup(...)
 }
 \arguments{
-\item{concept_ids}{Character vector of concept IDs.}
-
-\item{path}{Optional config dir override.}
+\item{...}{Reserved for future API; ignored.}
 }
 \value{
-A tibble with columns:
-concept_id, year, state_var, cdc_var, is_primary, source, score, notes,
-state_label, cdc_label.
+Errors with a message about the deferred implementation.
 }
 \description{
-Returns every (year, state_var, cdc_var) row mapped to the requested
-concept(s), joined with labels from both codebooks.
+\strong{Not implemented in v0.2.0.} Reimplementation
+for the new schema is planned for v0.2.x.
 }

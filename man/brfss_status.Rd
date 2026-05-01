@@ -2,24 +2,16 @@
 % Please edit documentation in R/status.R
 \name{brfss_status}
 \alias{brfss_status}
-\title{Show where brfssTools is reading and writing}
+\title{Show registered pools and their resolved paths}
 \usage{
-brfss_status(path = NULL)
-}
-\arguments{
-\item{path}{Optional config dir override. Defaults to the resolved
-config path (\code{brfss_config_path()}).}
-}
-\value{
-Invisibly, a list of the surfaced information.
-}
-\description{
-Prints a summary of the active config directory, the registered state,
-what files are present, which pools are registered, and where the cache
-lives. Run this any time you're not sure where the package is looking.
-}
-\examples{
-\dontrun{
 brfss_status()
 }
+\value{
+Invisibly, the structured status (one entry per registered
+pool).
+}
+\description{
+Prints a summary of every registered pool, including the data path,
+codebook path, crosswalk path, and how many data files are indexed
+per dataset.
 }

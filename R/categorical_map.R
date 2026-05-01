@@ -50,47 +50,19 @@ brfss_setup_categorical_map <- function(name,
                                         template = NULL,
                                         path = NULL,
                                         edit = interactive()) {
-  if (missing(name) || !is.character(name) || length(name) != 1L ||
-      !nzchar(name)) {
-    stop("`name` is required.", call. = FALSE)
-  }
-  if (!grepl("^[A-Za-z_][A-Za-z0-9_]*$", name)) {
-    stop("`name` must be R-friendly (letters/digits/underscores, ",
-         "no leading digit).", call. = FALSE)
-  }
-
-  cfg <- brfss_config_path(path, must_exist = FALSE)
-  trans_dir <- file.path(cfg, "transformations")
-  if (!dir.exists(trans_dir)) {
-    dir.create(trans_dir, recursive = TRUE, showWarnings = FALSE)
-  }
-
-  fp <- file.path(trans_dir, paste0(name, ".yaml"))
-
-  if (file.exists(fp)) {
-    message(sprintf("Categorical map '%s' already exists. Opening for editing.", name))
-  } else {
-    body <- .brfss_categorical_map_template(name, template)
-    writeLines(body, fp)
-    message(sprintf("Created categorical map '%s' at:\n  %s", name, fp))
-  }
-
-  if (edit) utils::file.edit(fp)
-  invisible(fp)
+  stop("brfss_setup_categorical_map() is not used in v0.2.0. ",
+       "Calculation YAML now lives inline in the crosswalk's ",
+       "calculation_yaml column. To set up a calculated cell, use ",
+       "the editor's 'Calculated' toggle or call cw_set_calc().",
+       call. = FALSE)
 }
 
-#' Set up the race categorical map (CDC-style)
-#'
-#' Convenience wrapper around `brfss_setup_categorical_map("race", "race")`.
-#' The shipped template implements CDC's `_RACE` calculated variable: 7 NH
-#' single-race categories + Hispanic + don't-know/refused.
-#'
-#' @inheritParams brfss_setup_categorical_map
-#' @return The YAML file path, invisibly.
+#' (deprecated in v0.2.0)
 #' @export
 brfss_setup_race_map <- function(path = NULL, edit = interactive()) {
-  brfss_setup_categorical_map("race", template = "race",
-                              path = path, edit = edit)
+  stop("brfss_setup_race_map() is not used in v0.2.0. ",
+       "Calculation YAML now lives inline in the crosswalk's ",
+       "calculation_yaml column.", call. = FALSE)
 }
 
 # ============================================================================
@@ -278,27 +250,9 @@ brfss_load_categorical_map <- function(fp) {
 #' @return Character vector of R code lines (invisibly if save=TRUE).
 #' @export
 brfss_render_transformation_code <- function(name, path = NULL, save = FALSE) {
-  cfg <- brfss_config_path(path, must_exist = FALSE)
-  fp_yaml <- file.path(cfg, "transformations", paste0(name, ".yaml"))
-  if (!file.exists(fp_yaml)) {
-    stop("No YAML transformation found at: ", fp_yaml, call. = FALSE)
-  }
-  spec <- brfss_load_transformation_spec(fp_yaml)
-  code <- switch(
-    spec$type,
-    "categorical_map" = .render_categorical_map_as_r(spec, name),
-    "passthrough"     = .render_passthrough_as_r(spec, name),
-    stop("Unknown transformation type: '", spec$type, "'", call. = FALSE)
-  )
-
-  if (save) {
-    fp_r <- file.path(cfg, "transformations", paste0(name, ".R"))
-    writeLines(code, fp_r)
-    message("Rendered R code saved to: ", fp_r)
-    return(invisible(code))
-  }
-
-  code
+  stop("brfss_render_transformation_code() is not used in v0.2.0. ",
+       "Calculation YAML now lives inline in the crosswalk's ",
+       "calculation_yaml column.", call. = FALSE)
 }
 
 # ============================================================================

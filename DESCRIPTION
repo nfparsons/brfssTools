@@ -27,6 +27,7 @@ Suggests:
     DT,
     bslib,
     htmltools,
+    shinyAce,
     yaml
 VignetteBuilder: knitr
 Imports: 

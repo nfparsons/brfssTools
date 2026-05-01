@@ -2,35 +2,23 @@
 % Please edit documentation in R/crosswalk.R
 \name{brfss_search}
 \alias{brfss_search}
-\title{Search the crosswalk and codebooks}
+\title{Search the crosswalk by regex}
 \usage{
-brfss_search(
-  query,
-  scope = c("all", "concept", "variable", "label"),
-  path = NULL
-)
+brfss_search(...)
 }
 \arguments{
-\item{query}{Search pattern (regex, case-insensitive).}
-
-\item{scope}{Where to search:
-\code{"all"} (default), \code{"concept"}, \code{"variable"}, or \code{"label"}.}
-
-\item{path}{Optional config dir override.}
+\item{...}{Reserved for future API; ignored.}
 }
 \value{
-A tibble with columns: concept_id, year, state_var, cdc_var,
-matched_in, plus the matching label (from cdc_codebook or state_codebook).
+Errors with a message about the deferred implementation.
 }
 \description{
-Case-insensitive regex search. Looks across concept IDs, state and CDC
-variable names, and labels (from the codebooks). Returns a tibble of
-matching rows with a \code{matched_in} column showing which field hit.
-}
-\examples{
-\dontrun{
-brfss_search("asthma")
-brfss_search("ACE", scope = "concept")
-brfss_search("CASTHNO", scope = "variable")
+\strong{Not implemented in v0.2.0.} Reimplementation
+for the new schema is planned for v0.2.x.
+
+For now, inspect the crosswalk directly:
+\preformatted{
+  cw <- cw_load(dataset = "OR")
+  subset(cw$crosswalk, grepl("MENT", concept_id, ignore.case = TRUE))
 }
 }

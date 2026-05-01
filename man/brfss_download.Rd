@@ -4,16 +4,11 @@
 \alias{brfss_download}
 \title{Download national CDC BRFSS LLCP files}
 \usage{
-brfss_download(
-  years,
-  dir = brfss_cache_dir(),
-  overwrite = FALSE,
-  quiet = FALSE
-)
+brfss_download(year, dir = brfss_cache_dir(), overwrite = FALSE, quiet = FALSE)
 }
 \arguments{
-\item{years}{Integer vector of survey years to download. All must be
-\verb{>= 2011}.}
+\item{year}{Integer scalar or vector of survey years to download.
+All must be \verb{>= 2011}.}
 
 \item{dir}{Cache directory. Defaults to \code{\link[=brfss_cache_dir]{brfss_cache_dir()}}.}
 

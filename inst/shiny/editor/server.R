@@ -17,8 +17,12 @@
 # Resolve path & namespace
 # ---------------------------------------------------------------------------
 
-ed_path <- Sys.getenv("BRFSSTOOLS_EDITOR_PATH",
-                      unset = brfssTools::brfss_config_path())
+ed_dataset <- Sys.getenv("BRFSSTOOLS_EDITOR_DATASET", unset = "")
+if (!nzchar(ed_dataset)) {
+  stop("BRFSSTOOLS_EDITOR_DATASET environment variable not set. ",
+        "The editor should be launched via brfss_crosswalk_editor(dataset = ...).",
+        call. = FALSE)
+}
 
 .ns <- asNamespace("brfssTools")
 
@@ -33,6 +37,7 @@ cw_rename_concept  <- .ns$cw_rename_concept
 cw_add_concept     <- .ns$cw_add_concept
 cw_remove_concept  <- .ns$cw_remove_concept
 cw_merge_concepts  <- .ns$cw_merge_concepts
+brfss_load_codebook <- .ns$brfss_load_codebook
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
@@ -143,10 +148,32 @@ server <- function(input, output, session) {
 
   # ---- Reactive state -----------------------------------------------------
 
-  bundle         <- reactiveVal(cw_load(ed_path))
+  bundle         <- reactiveVal(cw_load(dataset = ed_dataset))
   active_domain  <- reactiveVal(NULL)
   selected_cell  <- reactiveVal(NULL)   # list(concept_id, year)
   dirty          <- reactiveVal(FALSE)
+
+  # Codebook cache: list keyed by year string. Lazily populated as
+  # cells are clicked. NULL value means "tried, no codebook available";
+  # a tibble means "loaded".
+  codebook_cache <- reactiveVal(list())
+
+  # Fetch (or pull from cache) the codebook for a given year.
+  # Returns a tibble or NULL.
+  .get_codebook_for_year <- function(yr) {
+    cache <- codebook_cache()
+    key <- as.character(yr)
+    if (key %in% names(cache)) return(cache[[key]])
+
+    # Try to load. Use strict = FALSE so absence -> NULL, not an error.
+    cb <- tryCatch(
+      brfss_load_codebook(dataset = ed_dataset, year = yr, strict = FALSE),
+      error = function(e) NULL
+    )
+    cache[[key]] <- cb
+    codebook_cache(cache)
+    cb
+  }
 
   # ---- Header text --------------------------------------------------------
 
@@ -156,7 +183,7 @@ server <- function(input, output, session) {
     n   <- nrow(cw)
     n_un <- sum(cw$domain == "Unassigned")
     sprintf("%d concept-years \u00b7 %d unassigned \u00b7 %s",
-            n, n_un, ed_path)
+            n, n_un, ed_dataset)
   })
 
   # ---- Domain summary (for nav and main view) -----------------------------
@@ -529,9 +556,78 @@ server <- function(input, output, session) {
             tags$small(style = "color:#888;",
                        sprintf("%d variable(s) available; ",
                                length(vars)),
-                       "vars used by other concepts are hidden."))
+                       "vars used by other concepts are hidden.")),
+
+        # Codebook context (question text + value labels)
+        uiOutput("cell_codebook_context")
       )
     }
+  })
+
+  # Codebook context: pulls from the codebook cache for the cell's year,
+  # looks up the currently-selected state_var.
+  output$cell_codebook_context <- renderUI({
+    sel <- selected_cell()
+    if (is.null(sel)) return(NULL)
+
+    sv <- input$cell_state_var
+    if (is.null(sv) || !nzchar(sv)) return(NULL)
+
+    cb <- .get_codebook_for_year(sel$year)
+    if (is.null(cb) || nrow(cb) == 0L) {
+      return(div(class = "field-row",
+                 tags$small(style = "color:#aaa;",
+                            sprintf("(No codebook found for %d. Drop one in the documentation/ folder.)",
+                                    sel$year))))
+    }
+
+    entry <- cb[cb$variable_name == sv, , drop = FALSE]
+    if (nrow(entry) == 0L) {
+      return(div(class = "field-row",
+                 tags$small(style = "color:#aaa;",
+                            sprintf("(Variable '%s' not found in %d codebook.)",
+                                    sv, sel$year))))
+    }
+    entry <- entry[1, ]
+
+    # Build the value labels block
+    parsed <- entry$value_labels_parsed[[1]]
+    vl_block <- if (length(parsed) > 0L) {
+      div(style = "margin-top:8px;",
+          tags$div(style = "font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;",
+                   "Value labels"),
+          tags$table(style = "font-size:11px;border-collapse:collapse;",
+            do.call(tagList, lapply(seq_along(parsed), function(i) {
+              tags$tr(
+                tags$td(style = "padding:2px 8px 2px 0;color:#666;font-family:monospace;",
+                        names(parsed)[i]),
+                tags$td(style = "padding:2px 0;", parsed[i])
+              )
+            }))
+          ))
+    } else NULL
+
+    notes_block <- if (!is.na(entry$notes) && nzchar(entry$notes)) {
+      div(style = "margin-top:8px;font-size:11px;color:#666;font-style:italic;",
+          entry$notes)
+    } else NULL
+
+    qtext_block <- if (!is.na(entry$question_text) &&
+                       nzchar(entry$question_text)) {
+      div(style = "font-size:12px;color:#333;line-height:1.4;",
+          entry$question_text)
+    } else {
+      div(style = "font-size:11px;color:#aaa;font-style:italic;",
+          "(No question text recorded.)")
+    }
+
+    div(class = "field-row",
+        style = "margin-top:16px;padding:12px;background:#f8f8f8;border-radius:4px;border-left:3px solid #6699cc;",
+        tags$div(style = "font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;",
+                 "Codebook entry"),
+        qtext_block,
+        vl_block,
+        notes_block)
   })
 
   # ---- Cell actions -------------------------------------------------------
@@ -861,7 +957,7 @@ server <- function(input, output, session) {
       return()
     }
     res <- tryCatch({
-      cw_save(bundle(), ed_path)
+      cw_save(bundle(), dataset = ed_dataset)
       TRUE
     }, error = function(e) {
       showNotification(sprintf("Save failed: %s", conditionMessage(e)),
@@ -888,7 +984,7 @@ server <- function(input, output, session) {
         easyClose = TRUE
       ))
     } else {
-      bundle(cw_load(ed_path))
+      bundle(cw_load(dataset = ed_dataset))
       selected_cell(NULL)
       showNotification("Reloaded.", type = "message")
     }
@@ -896,7 +992,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$confirm_reload, {
     removeModal()
-    bundle(cw_load(ed_path))
+    bundle(cw_load(dataset = ed_dataset))
     selected_cell(NULL)
     dirty(FALSE)
     showNotification("Reloaded.", type = "message")

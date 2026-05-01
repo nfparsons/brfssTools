@@ -2,38 +2,70 @@
 % Please edit documentation in R/pool.R
 \name{brfss_set_pool}
 \alias{brfss_set_pool}
-\title{Register a directory of raw BRFSS files for a given dataset}
+\title{Register a BRFSS dataset for the session}
 \usage{
-brfss_set_pool(dataset, path)
+brfss_set_pool(dataset, data_path, codebook_path = NULL, crosswalk = NULL)
 }
 \arguments{
-\item{dataset}{A single character. The dataset identifier
-(e.g., \code{"National"}, \code{"OR"}). See \code{\link[=brfss_datasets]{brfss_datasets()}} for the list of
-known datasets.}
+\item{dataset}{Character. Dataset identifier (e.g., "OR", "CDC",
+"MA"). Used as the prefix for codebook filenames
+(\verb{<dataset>_<year>_codebook.csv}) and the crosswalk filename
+(\verb{<dataset>_crosswalk.csv}).}
 
-\item{path}{Character path to the directory containing the dataset's
-yearly survey files.}
+\item{data_path}{Character path to the directory containing raw
+data files. Required.}
+
+\item{codebook_path}{Optional character path. Defaults to
+\verb{<data_path>/documentation/}. The directory does not have to
+exist yet — useful if you intend to add codebooks later.}
+
+\item{crosswalk}{Optional character path to the crosswalk CSV.
+Defaults to \verb{<codebook_path>/<dataset>_crosswalk.csv}. The file
+does not have to exist yet — \code{brfss_draft_crosswalk()} will
+create it.}
 }
 \value{
-Invisibly, the index (named list of year -> file path).
+The resolved pool config (data_path, codebook_path,
+crosswalk, files), invisibly.
 }
 \description{
-Tells \code{brfssTools} where the raw survey files for a particular dataset
-live on disk. You call this once per dataset per session. Files can be
-CSV (Oregon convention) or XPT (CDC national convention); the engine
-dispatches on extension automatically.
+Tells brfssTools where to find the data files for a dataset, plus
+where the codebook documentation and crosswalk live (or should be
+created).
+}
+\details{
+Three paths are involved:
+\itemize{
+\item \code{data_path} — the directory containing the raw data files
+(required)
+\item \code{codebook_path} — the directory containing codebook CSVs
+(defaults to \verb{<data_path>/documentation/})
+\item \code{crosswalk} — the full path to the crosswalk CSV (defaults
+to \verb{<codebook_path>/<dataset>_crosswalk.csv})
+}
 
-Year is detected first from the filename — files matching \verb{LLCP\{YYYY\}} or
-similar — and falls back to peeking at the leading characters of the
-\code{SEQNO} column.
+Most users only set \code{data_path} and let the package compute sensible
+defaults. Power users — e.g., reading from a read-only network share —
+can set \code{codebook_path} and \code{crosswalk} explicitly to put working
+files in a project-local folder.
 
-Unknown dataset names produce a warning (but still work). To formalize
-a new dataset, add it to \code{.brfss_dataset_registry()} in \code{R/datasets.R}.
+Files in \code{data_path} can be \code{.csv} or \code{.xpt}. Year is detected from
+filename (\verb{LLCP\{YYYY\}} and similar patterns) or from the \code{SEQNO}
+column as a fallback.
 }
 \examples{
 \dontrun{
+# Typical usage: just point at the data directory
 brfss_set_pool("OR", "Z:/Secure_Data/Oregon_BRFSS")
-brfss_set_pool("National", "~/brfss_national")
-brfss_pool_status()
+# codebook_path defaults to Z:/Secure_Data/Oregon_BRFSS/documentation
+# crosswalk    defaults to Z:/Secure_Data/Oregon_BRFSS/documentation/OR_crosswalk.csv
+
+# Power user: read-only network share for data; work in project folder
+brfss_set_pool(
+  dataset       = "OR",
+  data_path     = "Z:/Secure_Data/Oregon_BRFSS",
+  codebook_path = "C:/projects/oregon/documentation",
+  crosswalk     = "C:/projects/oregon/OR_crosswalk.csv"
+)
 }
 }

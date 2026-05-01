@@ -4,18 +4,20 @@
 \alias{cw_save}
 \title{Save the bundle back to disk}
 \usage{
-cw_save(bundle, path = NULL)
+cw_save(bundle, dataset = NULL, path = NULL)
 }
 \arguments{
 \item{bundle}{Bundle from \code{cw_load()}, possibly modified.}
 
-\item{path}{Optional config dir override.}
+\item{dataset}{Character dataset name. If NULL, uses the bundle's
+recorded dataset.}
+
+\item{path}{Optional explicit path override.}
 }
 \value{
 The bundle, invisibly.
 }
 \description{
-Writes \code{crosswalk.csv} with .bak rotation. Reference data
-(codebooks, taxonomy) is never written from \code{cw_save()};
-the package treats those as read-only.
+Writes \code{crosswalk.csv} (with .bak rotation). Reference data
+is never written.
 }

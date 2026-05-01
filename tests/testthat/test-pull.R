@@ -104,7 +104,7 @@ test_that("brfss_pull respects years filter", {
   out <- brfss_pull(
     cw, "asthma_current",
     dataset = "OR",
-    years   = 2021,
+    year    = 2021,
     data    = data,
     id_cols = "SEQNO"
   )

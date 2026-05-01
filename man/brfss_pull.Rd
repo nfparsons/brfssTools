@@ -2,57 +2,21 @@
 % Please edit documentation in R/pull.R
 \name{brfss_pull}
 \alias{brfss_pull}
-\title{Pull harmonized BRFSS data}
+\title{Pull harmonized data}
 \usage{
-brfss_pull(
-  concepts = NULL,
-  domains = NULL,
-  tags = NULL,
-  years = NULL,
-  states = NULL,
-  source = NULL,
-  core_demographics = TRUE,
-  keep_inputs = FALSE,
-  output = c("wide", "long"),
-  path = NULL
-)
+brfss_pull(...)
 }
 \arguments{
-\item{concepts}{Character vector of concept IDs and/or transformation names.}
-
-\item{domains}{Character vector of domain names.}
-
-\item{tags}{Named list of tag filters.}
-
-\item{years}{Integer vector. Default: all years in the crosswalk.}
-
-\item{states}{Character (USPS) or numeric (FIPS); for \code{source = "cdc"}.}
-
-\item{source}{\code{"state"} or \code{"cdc"}. Auto-detects from registered pools.}
-
-\item{core_demographics}{If TRUE (default), include AGE, SEX, race
-(if user has a transformation), and survey design columns.}
-
-\item{keep_inputs}{If FALSE (default), drops intermediate raw columns.}
-
-\item{output}{\code{"wide"} (default) or \code{"long"}.}
-
-\item{path}{Optional config dir override.}
+\item{...}{Reserved for future API; ignored.}
 }
 \value{
-A tibble.
+Errors with a message about the deferred implementation.
 }
 \description{
-Resolves a request into raw column lookups and transformation calls,
-then loads, harmonizes, and returns the data.
-}
-\details{
-Three ways to specify what you want, all of which can combine (results
-are the union):
-\describe{
-\item{\code{concepts}}{Vector of concept IDs and/or transformation names.}
-\item{\code{domains}}{Vector of domain names from the taxonomy.}
-\item{\code{tags}}{Named list of tag filters,
-e.g., \code{list(population = "adult")}.}
-}
+\strong{Not implemented in v0.2.0.} The crosswalk-building workflow
+is the focus of this release; loading harmonized data using the
+v0.2.0 schema is planned for v0.2.x.
+
+To inspect your crosswalk programmatically, use \code{\link[=cw_load]{cw_load()}} /
+\code{\link[=cw_save]{cw_save()}} and the \code{cw_*} CRUD helpers.
 }

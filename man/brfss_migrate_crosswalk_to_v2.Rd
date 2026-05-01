@@ -4,13 +4,13 @@
 \alias{brfss_migrate_crosswalk_to_v2}
 \title{Migrate a v0.1.0 crosswalk to v0.2.0 schema}
 \usage{
-brfss_migrate_crosswalk_to_v2(path = NULL, dry_run = FALSE)
+brfss_migrate_crosswalk_to_v2(path, dry_run = FALSE)
 }
 \arguments{
-\item{path}{Optional config dir override.}
+\item{path}{Path to the v0.1.0 \code{crosswalk.csv} file. Required.}
 
-\item{dry_run}{Logical. If TRUE (default FALSE), returns the migrated
-tibble without writing to disk. Useful for inspection.}
+\item{dry_run}{Logical. If TRUE, returns the migrated tibble
+without writing. Useful for inspection.}
 }
 \value{
 The migrated crosswalk tibble, invisibly.
@@ -29,6 +29,6 @@ unverified = 0 (treats existing mappings as user-confirmed).
 }
 }
 \details{
-Backs up the existing crosswalk to \code{crosswalk.csv.v01.bak} before
+Backs up the existing crosswalk to \code{<path>.v01.bak} before
 writing.
 }

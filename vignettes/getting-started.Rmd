@@ -15,35 +15,130 @@ knitr::opts_chunk$set(
 )
 ```
 
-This vignette walks an analyst with state-collected BRFSS files through
-the brfssTools workflow, from a fresh install to a tidy crosswalk ready
-for use. The code is not executed at vignette build time — run the
-chunks yourself against your real machine and your real data.
+This vignette walks through brfssTools end-to-end: from a fresh install
+to a tidy crosswalk you can edit and version-control alongside your
+analysis. Code chunks are not executed at vignette build time — run
+them yourself against your real data.
 
 ## What this package solves
 
 The Behavioral Risk Factor Surveillance System (BRFSS) collects health
 data the same way every year, but the *files* don't reflect that
-sameness. Column names change. Response codes shift. New modules
-appear, old ones retire. Variables get renamed (`SEX1` → `SEXVAR`),
-calculated variables get rewritten (`INCOME2` becomes `INCOME3` with
-a different bracket structure), and within a single state, multi-year
-analyses end up requiring a per-year dictionary you maintain by hand.
+sameness. Column names change. Response codes shift. Variables get
+renamed (`SEX1` → `SEXVAR`), calculated variables get rewritten
+(`INCOME2` becomes `INCOME3` with a different bracket structure), and
+multi-year analyses end up requiring a per-year dictionary you maintain
+by hand.
 
 brfssTools is that dictionary, but as a structured tool: an editable
 crosswalk that maps each conceptual variable to its actual column name
 in each year's data file, with support for cells that need to be
-*calculated* from other columns (for example, when CDC changed how race
-was coded mid-decade, you can write a small inline expression for
-2017-2021 and a different one for 2022-2024).
+*calculated* from other columns.
 
-The crosswalk is **anchored on your most recent year of data**. The
+The crosswalk is **anchored on your most recent year of data**: the
 package reads your latest year's variable list, treats each variable
 as a "concept," and builds a draft crosswalk for you to fill in
-backwards. You handle older years via dropdowns or inline calculations.
-Domain assignment is pre-filled where the package can match against
-CDC's own variable naming, and left blank ("Unassigned") for review
-otherwise.
+backwards through the editor.
+
+## Common workflows
+
+Three concrete recipes covering the most common scenarios. Pick the
+one that fits, then read the rest of the vignette for what each step
+is doing.
+
+### State-data analyst (typical case)
+
+You have a directory of `.csv` or `.xpt` files for your state, plus
+(optionally) codebook documentation.
+
+```r
+library(brfssTools)
+
+# Once per session: register the data
+brfss_set_pool("OR", data_path = "Z:/Secure_Data/Oregon_BRFSS")
+
+# First time only: draft the crosswalk
+brfss_draft_crosswalk(dataset = "OR")
+
+# Each working session: open the editor
+brfss_crosswalk_editor(dataset = "OR")
+```
+
+### National BRFSS analyst
+
+You want CDC's public National data and don't have your own files.
+
+```r
+library(brfssTools)
+
+# Downloads CDC LLCP files to a cache, registers as the "National" pool
+brfss_use_national(years = 2018:2024)
+
+# Draft + edit
+brfss_draft_crosswalk(dataset = "National")
+brfss_crosswalk_editor(dataset = "National")
+```
+
+(A pre-built National crosswalk is planned for a future release; once
+shipped, the draft step won't be needed for National-only users.)
+
+### Migrating from v0.1.0 or pre-release v0.2.0
+
+You have an existing crosswalk file from v0.1.0:
+
+```r
+library(brfssTools)
+
+# Migrate the file in place; original is backed up to <path>.v01.bak
+brfss_migrate_crosswalk_to_v2(path = "path/to/old/crosswalk.csv")
+
+# Register a pool that points at the migrated file
+brfss_set_pool(
+  "OR",
+  data_path = "Z:/Secure_Data/Oregon_BRFSS",
+  crosswalk = "path/to/old/crosswalk.csv"   # the now-migrated v0.2.0 file
+)
+
+brfss_crosswalk_editor(dataset = "OR")
+```
+
+If you used a pre-release v0.2.0 build with a config dir at
+`tools::R_user_dir("brfssTools", "config")`:
+
+```r
+brfss_migrate_config_dir(
+  target_dir = "C:/projects/oregon/documentation",
+  dataset    = "OR"
+)
+# Then register a pool pointing at the migrated location
+brfss_set_pool(
+  "OR",
+  data_path     = "Z:/Secure_Data/Oregon_BRFSS",
+  codebook_path = "C:/projects/oregon/documentation",
+  crosswalk     = "C:/projects/oregon/documentation/OR_crosswalk.csv"
+)
+```
+
+## How files are organized
+
+A brfssTools project has three pieces, which can live anywhere on your
+filesystem:
+
+- **Data**: the raw BRFSS files (`.csv` or `.xpt`), one per year.
+  Often on a shared/secure drive.
+- **Codebooks** (optional): one CSV per year with question text and
+  value labels. Lets the editor show context as you map cells.
+- **Crosswalk**: the file you build via this package, mapping concepts
+  to variables across years.
+
+When you register a pool, by default the codebooks live in
+`<data_path>/documentation/` and the crosswalk lives in
+`<codebook_path>/<dataset>_crosswalk.csv`. Most users only need to
+specify the data directory; the rest gets sensible defaults.
+
+Power users with a read-only data drive can put the codebooks and
+crosswalk in a project-local folder by passing `codebook_path` and/or
+`crosswalk` explicitly.
 
 ## 1. Install
 
@@ -52,48 +147,37 @@ otherwise.
 pak::pak("nfparsons/brfssTools")
 ```
 
-## 2. Register your data files
-
-Point the package at the directory containing your state's BRFSS
-files. Files can be `.csv` or `.xpt`; year is auto-detected from the
-filename (or from the `SEQNO` column as a fallback).
+## 2. Register your pool
 
 ```r
 library(brfssTools)
 
-brfss_set_pool("OR", "Z:/Secure_Data/Oregon_BRFSS")
-#> Scanning pool for dataset 'OR'...
+# Typical case: just point at the data directory
+brfss_set_pool("OR", data_path = "Z:/Secure_Data/Oregon_BRFSS")
+#> Scanning data_path for dataset 'OR'...
 #> Indexed 13 file(s) for dataset 'OR'.
-
-brfss_pool_status()
+#>   data_path:     Z:/Secure_Data/Oregon_BRFSS
+#>   codebook_path: Z:/Secure_Data/Oregon_BRFSS/documentation
+#>   crosswalk:     Z:/Secure_Data/Oregon_BRFSS/documentation/OR_crosswalk.csv
+#>     (does not yet exist; run brfss_draft_crosswalk())
 ```
 
-The pool registration is session-scoped (re-run on each R session).
-Most analysts wrap this in a `.Rprofile` or a project setup script.
-
-## 3. Initialize a config and draft the crosswalk
-
-The config directory holds your crosswalk and state codebook. It lives
-separately from the package install and persists across upgrades.
+If your data is on a read-only share and you want to keep your
+crosswalk locally:
 
 ```r
-brfss_init_state(
-  state               = "OR",
-  state_codebook_path = "~/data/oregon_codebook.csv",
-  draft               = TRUE
+brfss_set_pool(
+  dataset       = "OR",
+  data_path     = "Z:/Secure_Data/Oregon_BRFSS",
+  codebook_path = "C:/projects/oregon/documentation",
+  crosswalk     = "C:/projects/oregon/OR_crosswalk.csv"
 )
 ```
 
-With `draft = TRUE`, this:
+Pool registration is session-scoped — re-run on each R session, most
+easily via your project's setup script or `.Rprofile`.
 
-1. Validates and copies in your state codebook
-2. Reads the most recent year's data file from the registered pool
-3. Creates one concept per variable in that year
-4. Adds rows for all earlier years with `state_var = NA` (awaiting your
-   mapping)
-5. Auto-assigns domains where it can match against the CDC reference
-
-Confirm everything's set up:
+Confirm the registration:
 
 ```r
 brfss_status()
@@ -101,39 +185,99 @@ brfss_status()
 #> brfssTools status
 #> -----------------
 #>
-#> Config directory:
-#>   C:/Users/.../AppData/Roaming/R/config/R/brfssTools
-#>   state:       OR
-#>
-#> Config files:
-#>   crosswalk          1872 rows  (147.0 KB)
-#>   state_codebook     5120 rows  (412.8 KB)
-#>
-#> Registered data pools:
-#>   OR (13 files, years 2012-2024)
+#> Dataset: OR
+#>   data_path:     Z:/Secure_Data/Oregon_BRFSS
+#>   codebook_path: Z:/Secure_Data/Oregon_BRFSS/documentation  (0 codebook file(s))
+#>   crosswalk:     Z:/Secure_Data/Oregon_BRFSS/documentation/OR_crosswalk.csv  (does not yet exist; run brfss_draft_crosswalk())
+#>   data files:    13 file(s), years 2012-2024
 ```
 
-## 4. Edit the crosswalk
+## 3. (Optional) Set up codebooks for richer editor context
 
-Open the editor:
+The editor displays question text and value labels for each cell when
+properly-formatted codebook CSVs are present. This is **optional** —
+the editor falls back to using variable names from your data files
+without context, but it's noticeably easier to work with codebooks in
+place.
+
+Codebooks go in the registered codebook directory, one CSV per year:
+
+```
+Z:/Secure_Data/Oregon_BRFSS/
+├── 2018.csv
+├── 2024.csv
+├── ...
+└── documentation/
+    ├── OR_2018_codebook.csv
+    └── OR_2024_codebook.csv
+```
+
+Format spec and AI-agent prompt for converting raw codebooks (PDF,
+Word, etc.) are shipped with the package:
 
 ```r
-brfss_crosswalk_editor()
+# Show the format spec
+brfss_codebook_help("spec")
+
+# Show the AI-agent prompt (paste into Claude/ChatGPT alongside your raw codebook)
+brfss_codebook_help("prompt")
+```
+
+Validate a codebook after dropping it in:
+
+```r
+brfss_load_codebook(dataset = "OR", year = 2024)
+```
+
+If validation passes, the editor will show codebook context for cells
+in that (dataset, year). Skip ahead if you'd rather get straight to
+mapping.
+
+## 4. Draft the crosswalk
+
+```r
+brfss_draft_crosswalk(dataset = "OR")
+#> Drafting from OR's most recent year (2024): Z:/Secure_Data/Oregon_BRFSS/2024.csv
+#> Found 482 variables in 2024.
+#> Auto-assigned domains: 312 assigned, 170 unassigned (need user review).
+#> Wrote 6266 rows to Z:/Secure_Data/Oregon_BRFSS/documentation/OR_crosswalk.csv
+#> Next: open the editor and assign domains to 170 Unassigned concepts.
+```
+
+What just happened:
+
+1. Read the most recent year's variable list (2024 in this example)
+2. Sanitized each variable name into an R-friendly `concept_id`
+3. Created one row per concept × year (state_var = NA in older years,
+   awaiting your mapping)
+4. Auto-assigned a `domain` and `subdomain` where the concept name
+   matches CDC's known variables; left others as "Unassigned"
+5. Wrote the result to the registered crosswalk path
+
+The crosswalk is now a real file you can git-track, share, or edit by
+hand if you want.
+
+## 5. Edit the crosswalk
+
+```r
+brfss_crosswalk_editor(dataset = "OR")
 ```
 
 The editor has three panes:
 
 - **Left**: domains, with concept counts. "Unassigned" is pinned at
-  the bottom — these are concepts whose domain couldn't be auto-matched
-  and need your review.
+  the bottom — concepts whose domain couldn't be auto-assigned.
 - **Center**: a heatmap for the selected domain. Rows are concepts;
-  columns are years; cells show mapping status:
-  - 🟢 mapped + verified
-  - 🟡 mapped, unverified
-  - ⚪ unmapped
-  - 🔵 calculated
-  - ⚫ unassigned domain (not editable)
+  columns are years; cells show mapping status.
 - **Right**: edit panel for the selected cell.
+
+### Cell colors
+
+- 🟢 mapped + verified
+- 🟡 mapped, unverified
+- ⚪ unmapped
+- 🔵 calculated
+- ⚫ unassigned domain (not editable until you assign)
 
 ### Per-cell mapping
 
@@ -148,17 +292,20 @@ Domain     Behavioral Health · Healthy Days
 ─────────
 [ ] Calculated
 
-state_var (from 2018 codebook):
+state_var (from 2018):
 [ PHYSHLTH                            ▼ ]   ← type to search
 
 [Save] [Verify] [Clear]
 ```
 
+If a codebook entry exists for the selected variable, the right panel
+also shows the question text and value labels.
+
 ### Per-cell calculation
 
-When a concept needs to be derived from multiple columns (for example,
-race calculated from `_MRACE1` and `_HISPANC`) check the **Calculated**
-box. The dropdown is replaced with a YAML editor:
+When a concept is derived from multiple columns (e.g., race calculated
+from `_MRACE1` and `_HISPANC`), check the **Calculated** box. The
+dropdown is replaced with a YAML editor:
 
 ```yaml
 type: categorical_map
@@ -184,106 +331,111 @@ levels:
 
 Calculations are stored **per-cell**. The same concept can be a column
 lookup in 2024 and a calculated cell in 2018 — useful for handling
-year-by-year structural changes in CDC's coding.
+year-by-year structural changes.
 
 ### Concept-level actions
 
 The right panel header has three buttons next to the concept name:
 
-- **Rename**: change the concept name across all years (validates
-  R-friendly naming).
-- **Merge…**: move this concept's mappings into another concept, then
-  delete this one. Errors if both concepts have a non-empty mapping for
-  the same year (you have to manually resolve before merging).
-- **Delete**: remove the concept and all its rows. Confirmation
-  warning if mappings would be lost.
+- **Rename**: change the concept name across all years.
+- **Merge…**: move this concept's mappings into another, then delete
+  this one. Errors if both have non-empty mappings for the same year.
+- **Delete**: remove the concept and all its rows.
 
 ### Unassigned concepts
 
 The Unassigned section shows concepts as a list (not a heatmap), each
 with an "Assign domain..." button. Until you assign a domain, the
-concept's cells aren't editable. Once assigned, the concept moves to
-its proper domain section and becomes editable.
+concept's cells aren't editable.
 
-### Save
+### Saving
 
-Edits are kept in memory until you click **Save** in the header.
-That writes to disk with a `.bak` rotation. **Reload** discards
-in-memory changes.
-
-## 5. Sharing or moving your work
-
-Your crosswalk lives in your user config directory. To move it to
-another machine, archive it, or share with a collaborator:
-
-```r
-brfss_export_config("~/oregon_crosswalk_2026-05-01.zip")
-# On the destination:
-brfss_import_config("~/oregon_crosswalk_2026-05-01.zip")
-```
-
-To start fresh while keeping a backup:
-
-```r
-brfss_reset()
-# Backs up current config to a timestamped folder, reinits to DEMO.
-```
+Edits are kept in memory until you click **Save** in the header. That
+writes to disk with a `.bak` rotation. **Reload** discards in-memory
+changes (with confirmation if dirty).
 
 ## 6. Adding new years
 
-When a new year of data arrives, drop the file into your pool directory
-and run:
+When a new year of data arrives, drop the file into your data
+directory, re-register the pool (so the file is indexed), then:
 
 ```r
-brfss_redraft_crosswalk()
+brfss_redraft_crosswalk(dataset = "OR")
 ```
 
-This is idempotent: existing concepts and mappings survive, but:
+This is idempotent: existing concepts and mappings survive, but new
+rows are added for any new years, and new concepts are created for
+variables that don't already exist.
 
-- New rows are added for any new years not already represented
-- New concepts are created for variables in the new year that don't
-  already exist in the crosswalk
+## 7. National BRFSS data
 
-You then go into the editor and fill in the new cells / assign
-domains to the new concepts.
-
-## Migrating from v0.1.0
-
-If you have a brfssTools v0.1.0 crosswalk:
+For users working with CDC's public National BRFSS data:
 
 ```r
-brfss_migrate_crosswalk_to_v2(dry_run = TRUE)
-# Inspect the migration result without writing.
+brfss_use_national(years = 2018:2024)
+# Downloads CDC LLCP files to a cache, registers as the "National" pool
 
-brfss_migrate_crosswalk_to_v2()
-# Commits the migration. Backs up v0.1.0 crosswalk to crosswalk.csv.v01.bak.
+brfss_draft_crosswalk(dataset = "National")
+brfss_crosswalk_editor(dataset = "National")
 ```
 
-The migration drops the `cdc_var`, `is_primary`, `source`, and `score`
-columns; adds `is_calculated`, `calculation_yaml`, `domain`, and
-`subdomain`; auto-assigns domains where possible; and treats existing
-mapped rows as user-confirmed (sets `unverified = 0`).
+A pre-built National crosswalk is planned for a future release; until
+then, drafting from the most recent year and editing is the same
+workflow as for state data.
 
-After migrating you'll likely want to clean up CDC's year-versioned
-variable groups (e.g., `ADDEPEV2` and `ADDEPEV3` as separate concepts,
-when conceptually they're the same thing). The editor's **Merge…**
-button is the cleanest path: click an `ADDEPEV2` cell, click Merge…,
-pick `ADDEPEV3` as the target, then optionally rename the result to
-something cleaner (`ADDEPEV` or `DEPRESSION`).
+## Sharing your work
+
+Your crosswalk is a regular CSV file at the path you registered. Move
+it however you'd move any file: copy to another machine, commit to git,
+share via cloud storage. To use it on another machine, register a pool
+that points at the same crosswalk path.
+
+## Migration
+
+If you have a v0.1.0 brfssTools crosswalk:
+
+```r
+brfss_migrate_crosswalk_to_v2(
+  path = "path/to/old/crosswalk.csv",
+  dry_run = TRUE
+)
+
+brfss_migrate_crosswalk_to_v2(path = "path/to/old/crosswalk.csv")
+# Backs up to <path>.v01.bak; writes the migrated file in place.
+```
+
+If you used a pre-release v0.2.0 build with a config dir at
+`tools::R_user_dir("brfssTools", "config")`:
+
+```r
+brfss_migrate_config_dir(
+  target_dir = "C:/projects/oregon/documentation",
+  dataset    = "OR"
+)
+# Copies your crosswalk to <target>/OR_crosswalk.csv. Source preserved
+# until you re-run with remove_source = TRUE.
+```
+
+After migrating, you'll likely have CDC's year-versioned variable
+groups as separate concepts (e.g., `ADDEPEV2` and `ADDEPEV3`). Use the
+editor's **Merge** button to consolidate them.
 
 ## Troubleshooting
 
 **`No pool registered for dataset 'OR'`** — re-run `brfss_set_pool()`.
 Pool registration is session-scoped.
 
-**Editor opens but the heatmap is empty** — your crosswalk has zero
-rows. Run `brfss_draft_crosswalk()` (with a pool registered) to draft
-from your data.
+**Editor opens but the heatmap is empty** — the crosswalk has zero
+rows. Run `brfss_draft_crosswalk(dataset = "OR")`.
 
 **Editor shows v0.1.0 schema error** — your crosswalk predates the
-v0.2.0 schema. Run `brfss_migrate_crosswalk_to_v2()`.
+v0.2.0 schema. Run `brfss_migrate_crosswalk_to_v2(path = ...)`.
 
 **A merge fails with "Cannot merge: both concepts have mappings for
 year X"** — both concepts have non-empty mappings for the same year.
-Decide which one is correct, clear the wrong one (Clear button in the
-edit panel), then retry the merge.
+Decide which is correct, clear the wrong one (Clear button in the
+edit panel), then retry.
+
+**`brfss_pull()` says it's not implemented** — correct. Pull is
+deferred to a follow-up release; v0.2.0 focuses on building the
+crosswalk.

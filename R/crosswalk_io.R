@@ -17,7 +17,9 @@
 
 #' @keywords internal
 .cw_default_path <- function() {
-  brfss_config_path(must_exist = FALSE)
+  # Deprecated in v0.2.0 path-based architecture. Kept for back-compat
+  # with calls from older code paths; returns NULL.
+  NULL
 }
 
 #' Canonical column ordering for v0.2.0 crosswalk
@@ -27,66 +29,58 @@
     "calculation_yaml", "domain", "subdomain", "unverified", "notes")
 }
 
+# Resolve the crosswalk path: explicit `path` arg wins; else use the
+# registered pool's crosswalk for `dataset`.
+.cw_resolve_path <- function(dataset = NULL, path = NULL) {
+  if (!is.null(path)) {
+    if (!is.character(path) || length(path) != 1L) {
+      stop("`path` must be a single character.", call. = FALSE)
+    }
+    return(path)
+  }
+  ds <- .brfss_resolve_dataset(dataset)
+  cfg <- .brfss_get_pool(ds)
+  cfg$crosswalk
+}
+
 #' Load the crosswalk bundle
 #'
-#' Reads the crosswalk and reference data (CDC codebook, state codebook,
-#' taxonomy) from the config dir and package extdata. Returns a list
-#' bundle. Mutates only \code{$crosswalk}; everything else is read-only
+#' Reads the crosswalk and reference data for a registered pool.
+#' Returns a list bundle with mutable \code{$crosswalk} plus read-only
 #' reference data.
 #'
-#' @param path Optional config dir override.
-#' @return A list with elements \code{crosswalk}, \code{cdc_codebook},
-#'   \code{state_codebook}, \code{taxonomy}, \code{cdc_calculated_vars},
-#'   \code{.path}.
+#' @param dataset Character. The registered pool to load. If NULL and
+#'   exactly one pool is registered, uses that one.
+#' @param path Optional explicit path to the crosswalk CSV (overrides
+#'   what's registered for the pool).
+#' @return A list bundle with elements `crosswalk`, `cdc_codebook`,
+#'   `taxonomy`, `cdc_calculated_vars`, `state_codebook` (the codebook
+#'   for the most recent year, if available), `dataset`, `.path`.
 #' @export
-cw_load <- function(path = NULL) {
-  if (is.null(path)) path <- .cw_default_path()
-  if (!dir.exists(path)) stop("Path not found: ", path, call. = FALSE)
-
-  read_one <- function(fname, required = TRUE,
-                       prefer = c("config","package")) {
-    prefer <- match.arg(prefer)
-
-    candidates <- character(0)
-    pkg <- tryCatch(.brfss_package_extdata(), error = function(e) NULL)
-    if (prefer == "config") {
-      candidates <- c(file.path(path, fname),
-                      if (!is.null(pkg)) file.path(pkg, fname))
-    } else {
-      candidates <- c(if (!is.null(pkg)) file.path(pkg, fname),
-                      file.path(path, fname))
-    }
-    candidates <- candidates[file.exists(candidates)]
-
-    if (length(candidates) == 0L) {
-      if (required) stop("Missing canonical file: ", fname, call. = FALSE)
-      return(NULL)
-    }
-    readr::read_csv(candidates[1], show_col_types = FALSE,
-                    locale = readr::locale(encoding = "UTF-8"),
-                    progress = FALSE)
+cw_load <- function(dataset = NULL, path = NULL) {
+  ds <- if (is.null(path)) .brfss_resolve_dataset(dataset) else (dataset %||% NA_character_)
+  cw_path <- .cw_resolve_path(ds, path)
+  if (!file.exists(cw_path)) {
+    stop("Crosswalk not found at: ", cw_path,
+         "\nRun brfss_draft_crosswalk(dataset = \"", ds, "\") to create it.",
+         call. = FALSE)
   }
 
-  bundle <- list(
-    crosswalk           = read_one("crosswalk.csv",           prefer = "config"),
-    cdc_codebook        = read_one("cdc_codebook.csv",        prefer = "package"),
-    state_codebook      = read_one("state_codebook.csv",      prefer = "config"),
-    taxonomy            = read_one("taxonomy.csv",            prefer = "package", required = FALSE),
-    cdc_calculated_vars = read_one("cdc_calculated_vars.csv", prefer = "package", required = FALSE),
-    .path               = path
-  )
+  # Read crosswalk
+  cw <- readr::read_csv(cw_path, show_col_types = FALSE,
+                         locale = readr::locale(encoding = "UTF-8"),
+                         progress = FALSE)
 
-  # Schema check
   required_cw <- .cw_v2_columns()
-  missing_cw  <- setdiff(required_cw, names(bundle$crosswalk))
-
+  missing_cw  <- setdiff(required_cw, names(cw))
   v01_only <- intersect(c("cdc_var", "is_primary", "source", "score"),
-                        names(bundle$crosswalk))
+                        names(cw))
   if (length(v01_only) > 0L && length(missing_cw) > 0L) {
     stop(
-      "crosswalk.csv appears to be the v0.1.0 schema (still has columns: ",
-      paste(v01_only, collapse = ", "),
-      ").\nRun brfss_migrate_crosswalk_to_v2() to update.",
+      "crosswalk.csv at ", cw_path, " appears to be the v0.1.0 schema ",
+      "(still has columns: ", paste(v01_only, collapse = ", "),
+      ").\nRun brfss_migrate_crosswalk_to_v2(path = \"",
+      cw_path, "\") to update.",
       call. = FALSE
     )
   }
@@ -97,59 +91,134 @@ cw_load <- function(path = NULL) {
          ")", call. = FALSE)
   }
 
-  # Coerce types
-  bundle$crosswalk$year             <- as.integer(bundle$crosswalk$year)
-  bundle$crosswalk$is_calculated    <- as.integer(bundle$crosswalk$is_calculated)
-  bundle$crosswalk$is_calculated[is.na(bundle$crosswalk$is_calculated)] <- 0L
-  bundle$crosswalk$unverified       <- as.integer(bundle$crosswalk$unverified)
-  bundle$crosswalk$unverified[is.na(bundle$crosswalk$unverified)] <- 0L
+  cw$year             <- as.integer(cw$year)
+  cw$is_calculated    <- as.integer(cw$is_calculated)
+  cw$is_calculated[is.na(cw$is_calculated)] <- 0L
+  cw$unverified       <- as.integer(cw$unverified)
+  cw$unverified[is.na(cw$unverified)] <- 0L
 
+  # Read shipped reference data (read-only)
+  pkg_extdata <- tryCatch(.brfss_package_extdata(), error = function(e) NULL)
+  read_ref <- function(fname) {
+    if (is.null(pkg_extdata)) return(NULL)
+    fp <- file.path(pkg_extdata, fname)
+    if (!file.exists(fp)) return(NULL)
+    readr::read_csv(fp, show_col_types = FALSE,
+                     locale = readr::locale(encoding = "UTF-8"),
+                     progress = FALSE)
+  }
+
+  # The "state_codebook" the editor uses for its dropdown is now derived
+  # from the registered pool's codebook directory: stack the per-year
+  # codebook CSVs to get a single (variable_name, year) table. If no
+  # codebook files exist, falls back to NULL — the editor handles this
+  # by using the data file column lists directly.
+  state_codebook <- if (!is.na(ds)) .stack_codebooks_for_pool(ds) else NULL
+
+  bundle <- list(
+    crosswalk           = cw,
+    cdc_codebook        = read_ref("cdc_codebook.csv"),
+    cdc_calculated_vars = read_ref("cdc_calculated_vars.csv"),
+    taxonomy            = read_ref("taxonomy.csv"),
+    state_codebook      = state_codebook,
+    dataset             = ds,
+    .path               = cw_path
+  )
   bundle
+}
+
+#' Stack per-year codebook CSVs for a dataset into one tibble. If no
+#' codebooks are present, falls back to reading variable names from the
+#' data files (no rich context, but the editor's dropdown still works).
+#' @keywords internal
+.stack_codebooks_for_pool <- function(dataset) {
+  cfg <- .brfss_get_pool(dataset)
+  if (is.null(cfg)) return(NULL)
+
+  # First, try codebooks
+  doc_dir <- cfg$codebook_path
+  rows <- list()
+  if (dir.exists(doc_dir)) {
+    pattern <- sprintf("^%s_[0-9]{4}_codebook\\.csv$", dataset)
+    files <- list.files(doc_dir, pattern = pattern, full.names = TRUE)
+    for (fp in files) {
+      cb <- tryCatch(
+        readr::read_csv(fp, show_col_types = FALSE, progress = FALSE,
+                         locale = readr::locale(encoding = "UTF-8")),
+        error = function(e) NULL
+      )
+      if (is.null(cb)) next
+      if (!"variable_name" %in% names(cb) || !"year" %in% names(cb)) next
+      cb$raw_var_name <- as.character(cb$variable_name)
+      cb$year         <- as.integer(cb$year)
+      rows[[length(rows) + 1L]] <- cb[, c("raw_var_name", "year"),
+                                        drop = FALSE]
+    }
+  }
+
+  # Fall back to data files for years not covered by a codebook
+  cb_years <- if (length(rows) > 0L) {
+    unique(do.call(rbind, rows)$year)
+  } else integer(0)
+  data_years <- as.integer(names(cfg$files))
+  fallback_years <- setdiff(data_years, cb_years)
+
+  for (yr in fallback_years) {
+    fp <- cfg$files[[as.character(yr)]]
+    if (is.null(fp) || !file.exists(fp)) next
+    vars <- tryCatch(
+      .brfss_read_var_names(fp),
+      error = function(e) character(0)
+    )
+    if (length(vars) == 0L) next
+    rows[[length(rows) + 1L]] <- tibble::tibble(
+      raw_var_name = vars,
+      year         = as.integer(yr)
+    )
+  }
+
+  if (length(rows) == 0L) return(NULL)
+  do.call(rbind, rows)
 }
 
 #' Save the bundle back to disk
 #'
-#' Writes \code{crosswalk.csv} with .bak rotation. Reference data
-#' (codebooks, taxonomy) is never written from \code{cw_save()};
-#' the package treats those as read-only.
+#' Writes \code{crosswalk.csv} (with .bak rotation). Reference data
+#' is never written.
 #'
 #' @param bundle Bundle from \code{cw_load()}, possibly modified.
-#' @param path Optional config dir override.
+#' @param dataset Character dataset name. If NULL, uses the bundle's
+#'   recorded dataset.
+#' @param path Optional explicit path override.
 #' @return The bundle, invisibly.
 #' @export
-cw_save <- function(bundle, path = NULL) {
+cw_save <- function(bundle, dataset = NULL, path = NULL) {
   if (is.null(path)) {
     if (!is.null(bundle$.path)) {
       path <- bundle$.path
     } else {
-      path <- .cw_default_path()
+      ds <- dataset %||% bundle$dataset %||% .brfss_resolve_dataset(NULL)
+      path <- .cw_resolve_path(ds, NULL)
     }
   }
 
-  pkg_extdata <- tryCatch(.brfss_package_extdata(), error = function(e) NULL)
-  if (!is.null(pkg_extdata) && normalizePath(path, mustWork = FALSE) ==
-      normalizePath(pkg_extdata, mustWork = FALSE)) {
-    stop("Refusing to write to package extdata directory. Use a config ",
-         "directory: ", .cw_default_path(), call. = FALSE)
-  }
-
-  if (!dir.exists(path)) {
-    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+  # Ensure parent dir exists
+  parent <- dirname(path)
+  if (!dir.exists(parent)) {
+    dir.create(parent, recursive = TRUE, showWarnings = FALSE)
   }
 
   # Backup
-  cw_path <- file.path(path, "crosswalk.csv")
-  if (file.exists(cw_path)) {
-    file.copy(cw_path, paste0(cw_path, ".bak"), overwrite = TRUE)
+  if (file.exists(path)) {
+    file.copy(path, paste0(path, ".bak"), overwrite = TRUE)
   }
 
   if (!is.null(bundle$crosswalk)) {
-    # Reorder to canonical
     cw <- bundle$crosswalk
     canonical <- intersect(.cw_v2_columns(), names(cw))
     extras    <- setdiff(names(cw), canonical)
     cw <- cw[, c(canonical, extras), drop = FALSE]
-    readr::write_csv(cw, cw_path, na = "")
+    readr::write_csv(cw, path, na = "")
   }
 
   invisible(bundle)

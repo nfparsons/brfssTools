@@ -45,13 +45,14 @@
 #'                              by = c("year", "raw_var_name"))
 #' }
 brfss_inventory_pool <- function(dataset, source = dataset, n_max = 1000L) {
-  index <- .brfss_get_pool(dataset)
-  if (is.null(index)) {
+  cfg <- .brfss_get_pool(dataset)
+  if (is.null(cfg)) {
     stop(sprintf(
       "No pool registered for dataset '%s'. Call brfss_set_pool() first.",
       dataset
     ), call. = FALSE)
   }
+  index <- cfg$files
   if (length(index) == 0L) {
     return(.empty_inventory())
   }
@@ -114,13 +115,14 @@ brfss_values_pool <- function(dataset,
                               source = dataset,
                               vars = NULL,
                               max_unique = 50L) {
-  index <- .brfss_get_pool(dataset)
-  if (is.null(index)) {
+  cfg <- .brfss_get_pool(dataset)
+  if (is.null(cfg)) {
     stop(sprintf(
       "No pool registered for dataset '%s'. Call brfss_set_pool() first.",
       dataset
     ), call. = FALSE)
   }
+  index <- cfg$files
   if (length(index) == 0L) {
     return(.empty_values())
   }

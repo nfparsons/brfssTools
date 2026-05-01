@@ -2,21 +2,16 @@
 % Please edit documentation in R/pool.R
 \name{brfss_pool_status}
 \alias{brfss_pool_status}
-\title{Show currently registered data pools}
+\title{Show the currently registered pools}
 \usage{
 brfss_pool_status()
 }
 \value{
-A tibble with columns \code{dataset}, \code{year}, and \code{file}.
+A tibble with columns \code{dataset}, \code{data_path},
+\code{codebook_path}, \code{crosswalk}, \code{year}, \code{file}. Returns NULL with
+a message if no pools are registered.
 }
 \description{
-Returns a one-row-per-(dataset, year) tibble showing which raw data
-files are registered and where they live on disk. Empty if no pools
-have been registered yet.
-}
-\examples{
-\dontrun{
-brfss_set_pool("OR", "/path/to/oregon")
-brfss_pool_status()
-}
+Returns a tibble listing each registered pool with one row per
+(dataset, year) combination, plus the resolved paths.
 }
